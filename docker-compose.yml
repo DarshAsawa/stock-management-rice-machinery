@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: stockdb
+      MYSQL_USER: stockuser
+      MYSQL_PASSWORD: stockpass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      timeout: 20s
+      retries: 10
+
+  web:
+    build: .
+    command: sh wait-for-db.sh
+    volumes:
+      - .:/app
+    ports:
+      - "5001:5000"
+    environment:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      DATABASE_URL: mysql+pymysql://stockuser:stockpass@db:3306/stockdb
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:

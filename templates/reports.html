@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h2>Stock Reports</h2>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Complete Stock Statement</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Unit</th>
+                    <th>Inward</th>
+                    <th>Outward</th>
+                    <th>Closing Stock</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_data %}
+                <tr>
+                    <td><strong>{{ row.item.name }}</strong></td>
+                    <td><span class="badge bg-primary">{{ row.item.category.name }}</span></td>
+                    <td>{{ row.item.unit or '-' }}</td>
+                    <td><span class="badge bg-success">{{ row.in_qty }}</span></td>
+                    <td><span class="badge bg-warning text-dark">{{ row.out_qty }}</span></td>
+                    <td>
+                        {% if row.closing > 0 %}
+                            <span class="badge bg-success">{{ row.closing }}</span>
+                        {% elif row.closing == 0 %}
+                            <span class="badge bg-secondary">{{ row.closing }}</span>
+                        {% else %}
+                            <span class="badge bg-danger">{{ row.closing }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.closing > 0 %}
+                            <span class="badge bg-success">In Stock</span>
+                        {% elif row.closing == 0 %}
+                            <span class="badge bg-warning text-dark">Out of Stock</span>
+                        {% else %}
+                            <span class="badge bg-danger">Negative</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="stats-number">{{ report_data|length }}</div>
+            <div class="stats-label">Total Items</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="stats-number">{{ report_data|selectattr('closing', 'gt', 0)|list|length }}</div>
+            <div class="stats-label">Items In Stock</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="stats-number">{{ report_data|selectattr('closing', 'eq', 0)|list|length }}</div>
+            <div class="stats-label">Items Out of Stock</div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

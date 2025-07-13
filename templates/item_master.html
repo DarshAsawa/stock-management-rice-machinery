@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h2>Item Master</h2>
+</div>
+
+<div class="form-container">
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="form-row">
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.name.label }}</label>
+                    {{ form.name(class="form-control", placeholder="Enter item name") }}
+                </div>
+            </div>
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.category_id.label }}</label>
+                    {{ form.category_id(class="form-select") }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.size.label }}</label>
+                    {{ form.size(class="form-control", placeholder="Enter size") }}
+                </div>
+            </div>
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.unit.label }}</label>
+                    {{ form.unit(class="form-control", placeholder="e.g., kg, L, pcs") }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.min_level.label }}</label>
+                    {{ form.min_level(class="form-control", placeholder="Minimum stock level") }}
+                </div>
+            </div>
+            <div class="form-col">
+                <div class="form-group">
+                    <label class="form-label">{{ form.rack_no.label }}</label>
+                    {{ form.rack_no(class="form-control", placeholder="Rack number") }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">{{ form.description.label }}</label>
+            {{ form.description(class="form-control", placeholder="Enter item description", rows="3") }}
+        </div>
+        
+        <button type="submit" class="btn btn-primary">{{ form.submit.label }}</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Existing Items</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Size</th>
+                    <th>Unit</th>
+                    <th>Min Level</th>
+                    <th>Rack No</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in items %}
+                <tr>
+                    <td>{{ i.id }}</td>
+                    <td><strong>{{ i.name }}</strong></td>
+                    <td><span class="badge bg-primary">{{ i.category.name }}</span></td>
+                    <td>{{ i.size or '-' }}</td>
+                    <td>{{ i.unit or '-' }}</td>
+                    <td>{{ i.min_level or '-' }}</td>
+                    <td>{{ i.rack_no or '-' }}</td>
+                    <td>{{ i.description or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %} 
