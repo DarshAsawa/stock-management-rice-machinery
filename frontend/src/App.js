@@ -42,6 +42,7 @@ const App = () => {
                             <NavItem label="Item Master" page="itemMaster" currentPage={currentPage} setCurrentPage={setCurrentPage} />
                             <NavItem label="Subcategory Manager" page="subcategoryManager" currentPage={currentPage} setCurrentPage={setCurrentPage} />
                             <NavItem label="Stock Control" page="stockControl" currentPage={currentPage} setCurrentPage={setCurrentPage} />
+                            <NavItem label="Production Floor" page="productionFloorStock" currentPage={currentPage} setCurrentPage={setCurrentPage} />
                             <NavItem label="Gate Inward" page="gateInward" currentPage={currentPage} setCurrentPage={setCurrentPage} />
                             <NavItem label="Issue Note (Internal)" page="issueNoteInternal" currentPage={currentPage} setCurrentPage={setCurrentPage} />
                             <NavItem label="Inward (Internal)" page="inwardInternal" currentPage={currentPage} setCurrentPage={setCurrentPage} />
@@ -58,14 +59,14 @@ const App = () => {
                     {currentPage === 'itemMaster' && <ItemMasterForm />}
                     {currentPage === 'subcategoryManager' && <SubcategoryManagerPage />}
                     {currentPage === 'stockControl' && <StockControlPage />}
+                    {currentPage === 'productionFloorStock' && <ProductionFloorStockPage />}
                     {currentPage === 'gateInward' && <GateInwardForm />}
                     {currentPage === 'issueNoteInternal' && <IssueNoteInternalForm />}
                     {currentPage === 'inwardInternal' && <InwardInternalForm />}
                     {currentPage === 'outwardChallan' && <OutwardChallanForm />}
                     {currentPage === 'recordedEntries' && <RecordedEntriesPage />}
 
-
-                    {/* New Overview Pages */}
+                    {/* Overview Pages */}
                     {currentPage === 'partyOverview' && <PartyOverviewPage />}
                     {currentPage === 'itemCatalogOverview' && <ItemCatalogOverviewPage />}
                     {currentPage === 'productionOverview' && <ProductionOverviewPage />}
@@ -132,8 +133,9 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <DashboardCard title="Party Management" description="Register and manage your buyers and sellers." icon="👥" page="partyOverview" setCurrentPage={setCurrentPage} />
                 <DashboardCard title="Item Catalog" description="Define categories and detailed item information." icon="📦" page="itemCatalogOverview" setCurrentPage={setCurrentPage} />
-                <DashboardCard title="Stock Control" description="Track material inward, outward, and production flow." icon="📊" page="stockControl" setCurrentPage={setCurrentPage} /> {/* Updated to new page */}
-                <DashboardCard title="Production Flow" description="Manage raw material issuance and finished goods receipt." icon="🏭" page="productionOverview" setCurrentPage={setCurrentPage} />
+                <DashboardCard title="Stock Control" description="Track material inward, outward, and production flow." icon="📊" page="stockControl" setCurrentPage={setCurrentPage} />
+                <DashboardCard title="Production Floor" description="Monitor raw materials available on production floor." icon="🏭" page="productionFloorStock" setCurrentPage={setCurrentPage} />
+                <DashboardCard title="Production Flow" description="Manage raw material issuance and finished goods receipt." icon="⚙️" page="productionOverview" setCurrentPage={setCurrentPage} />
                 <DashboardCard title="Dispatch & Sales" description="Record outward challans and manage customer deliveries." icon="🚚" page="dispatchOverview" setCurrentPage={setCurrentPage} />
                 <DashboardCard title="All Recorded Entries" description="View all transaction entries with detailed segregation." icon="📋" page="recordedEntries" setCurrentPage={setCurrentPage} />
             </div>
@@ -528,61 +530,64 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
     // ...existing code...
 
     // 3. Enhanced Item Master Form with Subcategory Support
+    // Update the ItemMasterForm component with these changes
+
+    // Update the ItemMasterForm component with these fixes
+
     const ItemMasterForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
-        const [items, setItems] = useState([]);
         const [categories, setCategories] = useState([]);
         const [subcategories, setSubcategories] = useState([]);
-        const [code, setCode] = useState('');
-        const [itemName, setItemName] = useState('');
+        const [items, setItems] = useState([]);
+        
+        // Form state variables - reordered
         const [categoryId, setCategoryId] = useState('');
         const [subcategoryId, setSubcategoryId] = useState('');
+        const [code, setCode] = useState(''); // Auto-generated, read-only
         const [desc1, setDesc1] = useState('');
         const [desc2, setDesc2] = useState('');
         const [desc3, setDesc3] = useState('');
         const [desc4, setDesc4] = useState('');
         const [desc5, setDesc5] = useState('');
+        const [itemName, setItemName] = useState(''); // Moved after descriptions
         const [fullDescription, setFullDescription] = useState('');
         const [stock, setStock] = useState(0);
         const [minLevel, setMinLevel] = useState(0);
         const [unitRate, setUnitRate] = useState(0);
         const [rackBin, setRackBin] = useState('');
+        
+        // Field labels state (these update based on subcategory)
+        const [field1Label, setField1Label] = useState('Description 1');
+        const [field2Label, setField2Label] = useState('Description 2');
+        const [field3Label, setField3Label] = useState('Description 3');
+        const [field4Label, setField4Label] = useState('Description 4');
+        const [field5Label, setField5Label] = useState('Description 5');
+        
         const [editingItemId, setEditingItemId] = useState(null);
         const [isLoading, setIsLoading] = useState(true);
+        const [isGeneratingCode, setIsGeneratingCode] = useState(false);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
-        const [showSubcategoryModal, setShowSubcategoryModal] = useState(false);
-
-        // New subcategory form states
-        const [newSubcategoryName, setNewSubcategoryName] = useState('');
-        const [newSubcategoryDesc1, setNewSubcategoryDesc1] = useState('');
-        const [newSubcategoryDesc2, setNewSubcategoryDesc2] = useState('');
-        const [newSubcategoryDesc3, setNewSubcategoryDesc3] = useState('');
-        const [newSubcategoryDesc4, setNewSubcategoryDesc4] = useState('');
-        const [newSubcategoryDesc5, setNewSubcategoryDesc5] = useState('');
 
         const fetchItemsAndCategories = async () => {
-            setIsLoading(true);
             try {
-                // Fetch main categories (Raw Material, Finish Good)
-                const categoryResponse = await fetch(`${API_BASE_URL}/categories`);
-                if (!categoryResponse.ok) throw new Error(`HTTP error! status: ${categoryResponse.status}`);
-                const categoryData = await categoryResponse.json();
-                setCategories(categoryData.map(cat => ({ id: cat.id, label: cat.category_name, value: cat.id, ...cat })));
+                setIsLoading(true);
+                const [categoriesResponse, subcategoriesResponse, itemsResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/categories`),
+                    fetch(`${API_BASE_URL}/subcategories`),
+                    fetch(`${API_BASE_URL}/items`)
+                ]);
 
-                // Fetch subcategories
-                const subcategoryResponse = await fetch(`${API_BASE_URL}/subcategories`);
-                if (!subcategoryResponse.ok) throw new Error(`HTTP error! status: ${subcategoryResponse.status}`);
-                const subcategoryData = await subcategoryResponse.json();
-                setSubcategories(subcategoryData.map(sub => ({ id: sub.id, label: sub.subcategory_name, value: sub.id, ...sub })));
+                if (!categoriesResponse.ok || !subcategoriesResponse.ok || !itemsResponse.ok) {
+                    throw new Error('Failed to fetch data');
+                }
 
-                // Fetch items
-                const itemResponse = await fetch(`${API_BASE_URL}/items`);
-                if (!itemResponse.ok) throw new Error(`HTTP error! status: ${itemResponse.status}`);
-                const itemData = await itemResponse.json();
-                setItems(itemData.map(item => ({
-                    ...item,
-                    unit_rate: parseFloat(item.unit_rate)
-                })));
+                const categoriesData = await categoriesResponse.json();
+                const subcategoriesData = await subcategoriesResponse.json();
+                const itemsData = await itemsResponse.json();
+
+                setCategories(categoriesData);
+                setSubcategories(subcategoriesData);
+                setItems(itemsData);
             } catch (error) {
                 console.error("Error fetching data:", error);
                 setModal({ show: true, title: "Error", message: "Failed to load data. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
@@ -595,126 +600,152 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             fetchItemsAndCategories();
         }, []);
 
-        // Filter subcategories based on selected category
-        const filteredSubcategories = subcategories.filter(sub => sub.category_id === categoryId);
-
-        // Effect to pre-fill desc fields and update full description when subcategory changes
-        useEffect(() => {
-            const selectedSubcategory = subcategories.find(sub => sub.id === subcategoryId);
-            if (selectedSubcategory) {
-                // Pre-fill desc fields from selected subcategory's field mappings
-                setDesc1(selectedSubcategory.field1_name || '');
-                setDesc2(selectedSubcategory.field2_name || '');
-                setDesc3(selectedSubcategory.field3_name || '');
-                setDesc4(selectedSubcategory.field4_name || '');
-                setDesc5(selectedSubcategory.field5_name || '');
-            } else if (!editingItemId) {
-                // Clear desc fields if no subcategory is selected, but only if not in edit mode
-                setDesc1('');
-                setDesc2('');
-                setDesc3('');
-                setDesc4('');
-                setDesc5('');
+        // Generate item code when category and subcategory are selected
+        const generateItemCode = async (categoryId, subcategoryId) => {
+            if (!categoryId || !subcategoryId) {
+                setCode('');
+                return;
             }
-            
-            // // Update full description
-            // const selectedCategory = categories.find(cat => cat.id === categoryId);
-            // const parts = [
-            //     itemName,
-            //     selectedCategory ? selectedCategory.category_name : '',
-            //     selectedSubcategory ? selectedSubcategory.subcategory_name : '',
-            //     desc1,
-            //     desc2,
-            //     desc3,
-            //     desc4,
-            //     desc5
-            // ].filter(Boolean).join(' ');
-            // setFullDescription(parts.trim());
-        }, [subcategoryId, subcategories, categoryId, categories]);
+
+            setIsGeneratingCode(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/items/generate-code/${categoryId}/${subcategoryId}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                setCode(data.itemCode);
+            } catch (error) {
+                console.error("Error generating item code:", error);
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: "Failed to generate item code. Please try again.", 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
+            } finally {
+                setIsGeneratingCode(false);
+            }
+        };
+
+        // Effect to generate code when category or subcategory changes (only for new items)
+        useEffect(() => {
+            if (!editingItemId && categoryId && subcategoryId) {
+                generateItemCode(categoryId, subcategoryId);
+            }
+        }, [categoryId, subcategoryId, editingItemId]);
+
+        // Filter subcategories based on selected category
+        const filteredSubcategories = subcategories.filter(sub => sub.category_id === parseInt(categoryId));
+
+        // Effect to update field labels when subcategory changes (but keep values empty for new items)
+        useEffect(() => {
+            const selectedSubcategory = subcategories.find(sub => sub.id === parseInt(subcategoryId));
+            if (selectedSubcategory) {
+                // Update field labels from selected subcategory's field mappings
+                setField1Label(selectedSubcategory.field1_name || 'Description 1');
+                setField2Label(selectedSubcategory.field2_name || 'Description 2');
+                setField3Label(selectedSubcategory.field3_name || 'Description 3');
+                setField4Label(selectedSubcategory.field4_name || 'Description 4');
+                setField5Label(selectedSubcategory.field5_name || 'Description 5');
+                
+                // Only clear values if not in edit mode
+                if (!editingItemId) {
+                    setDesc1('');
+                    setDesc2('');
+                    setDesc3('');
+                    setDesc4('');
+                    setDesc5('');
+                }
+            } else {
+                // Reset to default labels if no subcategory is selected
+                setField1Label('Description 1');
+                setField2Label('Description 2');
+                setField3Label('Description 3');
+                setField4Label('Description 4');
+                setField5Label('Description 5');
+                
+                if (!editingItemId) {
+                    setDesc1('');
+                    setDesc2('');
+                    setDesc3('');
+                    setDesc4('');
+                    setDesc5('');
+                }
+            }
+        }, [subcategoryId, subcategories, editingItemId]);
 
         // Effect to update full description when individual desc fields change
         useEffect(() => {
-
-            const parts = [
-                desc1,
-                desc2,
-                desc3,
-                desc4,
-                desc5
-            ].filter(Boolean).join(' ');
+            const parts = [desc1, desc2, desc3, desc4, desc5].filter(Boolean).join(' ');
             setFullDescription(parts.trim());
         }, [desc1, desc2, desc3, desc4, desc5]);
 
         const resetForm = () => {
-            setCode('');
-            setItemName('');
             setCategoryId('');
             setSubcategoryId('');
+            setCode('');
             setDesc1('');
             setDesc2('');
             setDesc3('');
             setDesc4('');
             setDesc5('');
+            setItemName('');
             setFullDescription('');
             setStock(0);
             setMinLevel(0);
             setUnitRate(0);
             setRackBin('');
             setEditingItemId(null);
+            
+            // Reset field labels to default
+            setField1Label('Description 1');
+            setField2Label('Description 2');
+            setField3Label('Description 3');
+            setField4Label('Description 4');
+            setField5Label('Description 5');
         };
 
-        const resetSubcategoryForm = () => {
-            setNewSubcategoryName('');
-            setNewSubcategoryDesc1('');
-            setNewSubcategoryDesc2('');
-            setNewSubcategoryDesc3('');
-            setNewSubcategoryDesc4('');
-            setNewSubcategoryDesc5('');
-        };
-
-        const handleCreateSubcategory = async () => {
-            if (!categoryId || !newSubcategoryName.trim()) {
-                setModal({ show: true, title: "Error", message: "Please select a category and enter subcategory name.", onClose: () => setModal({ ...modal, show: false }) });
-                return;
-            }
-
-            try {
-                const subcategoryData = {
-                    categoryId: Number(categoryId),
-                    subcategoryName: newSubcategoryName,
-                    field1Name: newSubcategoryDesc1 || 'Description 1',
-                    field2Name: newSubcategoryDesc2 || 'Description 2',
-                    field3Name: newSubcategoryDesc3 || 'Description 3',
-                    field4Name: newSubcategoryDesc4 || 'Description 4',
-                    field5Name: newSubcategoryDesc5 || 'Description 5',
-                    userId
-                };
-
-                const response = await fetch(`${API_BASE_URL}/subcategories`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(subcategoryData)
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                setModal({ show: true, title: "Success", message: `Subcategory "${newSubcategoryName}" created successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-                setShowSubcategoryModal(false);
-                resetSubcategoryForm();
-                fetchItemsAndCategories(); // Re-fetch data
-                setSubcategoryId(result.id); // Select the newly created subcategory
-            } catch (error) {
-                console.error("Error creating subcategory:", error);
-                setModal({ show: true, title: "Error", message: `Failed to create subcategory: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+        const handleEdit = (item) => {
+            setEditingItemId(item.id);
+            setCategoryId(item.category_id);
+            setSubcategoryId(item.subcategory_id);
+            setCode(item.item_code); // Set existing code for editing
+            setItemName(item.item_name);
+            setDesc1(item.description1 || '');
+            setDesc2(item.description2 || '');
+            setDesc3(item.description3 || '');
+            setDesc4(item.description4 || '');
+            setDesc5(item.description5 || '');
+            setFullDescription(item.full_description || '');
+            setStock(item.stock);
+            setMinLevel(item.min_level);
+            setUnitRate(parseFloat(item.unit_rate));
+            setRackBin(item.rack_bin || '');
+            
+            // Update field labels based on the item's subcategory
+            const selectedSubcategory = subcategories.find(sub => sub.id === item.subcategory_id);
+            if (selectedSubcategory) {
+                setField1Label(selectedSubcategory.field1_name || 'Description 1');
+                setField2Label(selectedSubcategory.field2_name || 'Description 2');
+                setField3Label(selectedSubcategory.field3_name || 'Description 3');
+                setField4Label(selectedSubcategory.field4_name || 'Description 4');
+                setField5Label(selectedSubcategory.field5_name || 'Description 5');
             }
         };
 
         const handleSubmit = async (e) => {
             e.preventDefault();
+
+            if (!code) {
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: "Item code is required. Please select category and subcategory to generate code.", 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
+                return;
+            }
+
             const itemData = {
                 code,
                 itemName,
@@ -754,31 +785,23 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
 
-                setModal({ show: true, title: "Success", message: `Item ${editingItemId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Success", 
+                    message: `Item ${editingItemId ? 'updated' : 'created'} successfully!`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
                 resetForm();
                 fetchItemsAndCategories();
             } catch (error) {
                 console.error("Error saving item:", error);
-                setModal({ show: true, title: "Error", message: `Failed to save item: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: `Failed to save item: ${error.message}`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
             }
-        };
-
-        const handleEdit = (item) => {
-            setEditingItemId(item.id);
-            setCode(item.item_code);
-            setItemName(item.item_name);
-            setCategoryId(item.category_id);
-            setSubcategoryId(item.subcategory_id);
-            setDesc1(item.description1 || '');
-            setDesc2(item.description2 || '');
-            setDesc3(item.description3 || '');
-            setDesc4(item.description4 || '');
-            setDesc5(item.description5 || '');
-            setFullDescription(item.full_description);
-            setStock(item.stock);
-            setMinLevel(item.min_level);
-            setUnitRate(item.unit_rate);
-            setRackBin(item.rack_bin);
         };
 
         const handleDelete = (id) => {
@@ -796,133 +819,199 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                             const errorData = await response.json();
                             throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                         }
-                        setModal({ show: true, title: "Success", message: "Item deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: "Item deleted successfully!", 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
                         fetchItemsAndCategories();
                     } catch (error) {
                         console.error("Error deleting item:", error);
-                        setModal({ show: true, title: "Error", message: `Failed to delete item: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete item: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
                     }
                 },
                 onClose: () => setModal({ ...modal, show: false })
             });
         };
 
-        const getStockStatusColor = (currentStock, minLevel) => {
-            if (currentStock <= minLevel) {
-                return 'text-red-600 font-bold';
-            } else if (currentStock > minLevel && currentStock <= minLevel * 1.5) {
-                return 'text-orange-600 font-bold';
-            }
-            return 'text-green-600';
-        };
-
-        // Get dynamic labels for description fields from subcategory
-        const getDescLabel = (descNum) => {
-            const selectedSubcategory = subcategories.find(sub => sub.id === subcategoryId);
-            if (selectedSubcategory) {
-                switch (descNum) {
-                    case 1: return selectedSubcategory.field1_name || 'Description 1';
-                    case 2: return selectedSubcategory.field2_name || 'Description 2';
-                    case 3: return selectedSubcategory.field3_name || 'Description 3';
-                    case 4: return selectedSubcategory.field4_name || 'Description 4';
-                    case 5: return selectedSubcategory.field5_name || 'Description 5';
-                    default: return `Description ${descNum}`;
-                }
-            }
-            return `Description ${descNum}`;
-        };
-
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
                 <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Item Master</h2>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                    <InputField label="Item Code" id="itemCode" value={code} onChange={(e) => setCode(e.target.value)} required={true} placeholder="e.g., RM001" />
-                    <InputField label="Item Name" id="itemName" value={itemName} onChange={(e) => setItemName(e.target.value)} required={true} placeholder="e.g., Cutting Wheel" />
-                    
-                    <SelectField
-                        label="Category"
-                        id="itemCategory"
-                        value={categoryId}
-                        onChange={(e) => {
-                            setCategoryId(Number(e.target.value));
-                            setSubcategoryId(''); // Reset subcategory when category changes
-                        }}
-                        options={categories.map(cat => ({ label: cat.category_name, value: cat.id }))}
-                        required={true}
-                    />
-                    
-                    <div className="flex items-end gap-2">
+                
+                {/* Info Banner for Item Code Generation */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center">
+                        <div className="text-blue-600 mr-3">💡</div>
+                        <div>
+                            <h4 className="font-semibold text-blue-800">Auto Item Code Generation & Dynamic Fields</h4>
+                            <p className="text-blue-700 text-sm">
+                                Item codes are automatically generated based on your category and subcategory selection. 
+                                Field labels update automatically when you select a subcategory, showing the custom field names you've defined.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                    {/* First Row - Category and Subcategory Selection */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
+                        <SelectField
+                            label="Category"
+                            id="categorySelect"
+                            value={categoryId}
+                            onChange={(e) => {
+                                setCategoryId(e.target.value);
+                                setSubcategoryId(''); // Reset subcategory when category changes
+                                if (!editingItemId) setCode(''); // Clear code for new items
+                            }}
+                            options={categories.map(cat => ({ label: cat.category_name, value: cat.id }))}
+                            required={true}
+                        />
                         <SelectField
                             label="Subcategory"
-                            id="itemSubcategory"
+                            id="subcategorySelect"
                             value={subcategoryId}
-                            onChange={(e) => setSubcategoryId(Number(e.target.value))}
+                            onChange={(e) => setSubcategoryId(e.target.value)}
                             options={filteredSubcategories.map(sub => ({ label: sub.subcategory_name, value: sub.id }))}
                             required={true}
-                            className="flex-grow"
-                        />
-                        <Button 
-                            onClick={() => setShowSubcategoryModal(true)} 
-                            type="button" 
-                            className="bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-3 h-10 rounded-lg shadow-md"
                             disabled={!categoryId}
-                        >
-                            New Subcategory
-                        </Button>
+                        />
                     </div>
 
-                    <InputField label={getDescLabel(1)} id="itemDesc1" value={desc1} onChange={(e) => setDesc1(e.target.value)} placeholder="e.g., PRODUCT" />
-                    <InputField label={getDescLabel(2)} id="itemDesc2" value={desc2} onChange={(e) => setDesc2(e.target.value)} placeholder="e.g., PLY" />
-                    <InputField label={getDescLabel(3)} id="itemDesc3" value={desc3} onChange={(e) => setDesc3(e.target.value)} placeholder="e.g., LENGTH" />
-                    <InputField label={getDescLabel(4)} id="itemDesc4" value={desc4} onChange={(e) => setDesc4(e.target.value)} placeholder="e.g., WIDTH" />
-                    <InputField label={getDescLabel(5)} id="itemDesc5" value={desc5} onChange={(e) => setDesc5(e.target.value)} placeholder="e.g., HEIGHT" />
-                    <InputField label="Full Description" id="fullDescription" value={fullDescription} readOnly={true} className="bg-gray-100" />
-                    <InputField label="Stock" id="stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} required={true} />
-                    <InputField label="Min Level" id="minLevel" type="number" value={minLevel} onChange={(e) => setMinLevel(e.target.value)} required={true} />
-                    <InputField label="Unit Rate" id="unitRate" type="number" value={unitRate} onChange={(e) => setUnitRate(e.target.value)} required={true} />
-                    <InputField label="Rack/BIN" id="rackBin" value={rackBin} onChange={(e) => setRackBin(e.target.value)} required={true} />
+                    {/* Second Row - Auto-generated Item Code */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
+                        <div className="relative">
+                            <InputField
+                                label="Item Code (Auto-generated)"
+                                id="code"
+                                value={code}
+                                readOnly={true}
+                                className="bg-gray-100 cursor-not-allowed"
+                                placeholder={categoryId && subcategoryId ? (isGeneratingCode ? "Generating..." : "Code will be generated") : "Select category and subcategory first"}
+                            />
+                            {isGeneratingCode && (
+                                <div className="absolute right-3 top-9">
+                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
-                    <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
-                        <Button type="submit">{editingItemId ? 'Update Item' : 'Add Item'}</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear</Button>
+                    {/* Third Row - Description Fields (Now comes before Item Name) */}
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Item Description Fields</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 mb-6">
+                        <InputField 
+                            label={field1Label} 
+                            id="desc1" 
+                            value={desc1} 
+                            onChange={(e) => setDesc1(e.target.value)} 
+                            placeholder={`Enter ${field1Label.toLowerCase()}`}
+                        />
+                        <InputField 
+                            label={field2Label} 
+                            id="desc2" 
+                            value={desc2} 
+                            onChange={(e) => setDesc2(e.target.value)} 
+                            placeholder={`Enter ${field2Label.toLowerCase()}`}
+                        />
+                        <InputField 
+                            label={field3Label} 
+                            id="desc3" 
+                            value={desc3} 
+                            onChange={(e) => setDesc3(e.target.value)} 
+                            placeholder={`Enter ${field3Label.toLowerCase()}`}
+                        />
+                        <InputField 
+                            label={field4Label} 
+                            id="desc4" 
+                            value={desc4} 
+                            onChange={(e) => setDesc4(e.target.value)} 
+                            placeholder={`Enter ${field4Label.toLowerCase()}`}
+                        />
+                        <InputField 
+                            label={field5Label} 
+                            id="desc5" 
+                            value={desc5} 
+                            onChange={(e) => setDesc5(e.target.value)} 
+                            placeholder={`Enter ${field5Label.toLowerCase()}`}
+                        />
+                    </div>
+
+                    {/* Fourth Row - Item Name (Now comes after descriptions) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
+                        <InputField 
+                            label="Item Name" 
+                            id="itemName" 
+                            value={itemName} 
+                            onChange={(e) => setItemName(e.target.value)} 
+                            required={true} 
+                            placeholder="Enter specific item name" 
+                        />
+                        <InputField
+                            label="Full Description (Auto-generated)"
+                            id="fullDescription"
+                            value={fullDescription}
+                            readOnly={true}
+                            className="bg-gray-100"
+                            placeholder="Automatically combined from description fields"
+                        />
+                    </div>
+
+                    {/* Fifth Row - Stock and Pricing Information */}
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Stock & Pricing Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 mb-6">
+                        <InputField label="Current Stock" id="stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} required={true} />
+                        <InputField label="Minimum Level" id="minLevel" type="number" value={minLevel} onChange={(e) => setMinLevel(e.target.value)} required={true} />
+                        <InputField label="Unit Rate" id="unitRate" type="number" step="0.01" value={unitRate} onChange={(e) => setUnitRate(e.target.value)} required={true} />
+                        <InputField label="Rack/BIN Location" id="rackBin" value={rackBin} onChange={(e) => setRackBin(e.target.value)} placeholder="e.g., A1-B2" />
+                    </div>
+
+                    <div className="flex justify-end space-x-4">
+                        <Button type="submit" disabled={isGeneratingCode}>
+                            {editingItemId ? 'Update Item' : 'Create Item'}
+                        </Button>
+                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
                     </div>
                 </form>
 
-                <h3 className="text-2xl font-bold text-gray-800 mt-10 mb-4 border-b-2 border-blue-400 pb-2">Registered Items</h3>
+                {/* Items Table */}
+                <h3 className="text-2xl font-bold text-gray-800 mt-10 mb-4 border-b-2 border-blue-400 pb-2">Existing Items</h3>
                 {isLoading ? <LoadingSpinner /> : (
                     <div className="overflow-x-auto rounded-lg shadow-md">
                         <table className="min-w-full bg-white">
                             <thead className="bg-blue-100">
                                 <tr>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Code</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Code</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Name</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Category</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Subcategory</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Description</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Stock</th>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Min Level</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Unit Rate</th>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Rack/BIN</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {items.length === 0 ? (
                                     <tr>
-                                        <td colSpan="10" className="py-4 px-4 text-center text-gray-500">No items registered yet.</td>
+                                        <td colSpan="8" className="py-4 px-4 text-center text-gray-500">No items created yet.</td>
                                     </tr>
                                 ) : (
                                     items.map((item) => (
                                         <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                            <td className="py-3 px-4 text-sm text-gray-800">{item.item_code}</td>
-                                            <td className="py-3 px-4 text-sm text-gray-800">{item.item_name}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800 font-mono font-medium">{item.item_code}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800 font-medium">{item.item_name}</td>
                                             <td className="py-3 px-4 text-sm text-gray-800">{item.category_name}</td>
                                             <td className="py-3 px-4 text-sm text-gray-800">{item.subcategory_name}</td>
                                             <td className="py-3 px-4 text-sm text-gray-800">{item.full_description}</td>
-                                            <td className={`py-3 px-4 text-sm ${getStockStatusColor(item.stock, item.min_level)}`}>{item.stock}</td>
-                                            <td className="py-3 px-4 text-sm text-gray-800">{item.min_level}</td>
-                                            <td className="py-3 px-4 text-sm text-gray-800">{item.unit_rate.toFixed(2)}</td>
-                                            <td className="py-3 px-4 text-sm text-gray-800">{item.rack_bin}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">{item.stock}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">₹{parseFloat(item.unit_rate).toFixed(2)}</td>
                                             <td className="py-3 px-4 text-sm">
                                                 <Button onClick={() => handleEdit(item)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
                                                 <Button onClick={() => handleDelete(item.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
@@ -934,23 +1023,6 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                         </table>
                     </div>
                 )}
-
-                {/* Subcategory Creation Modal */}
-                <Modal
-                    show={showSubcategoryModal}
-                    title="Create New Subcategory"
-                    onClose={() => { setShowSubcategoryModal(false); resetSubcategoryForm(); }}
-                    showConfirmButton={true}
-                    confirmText="Create Subcategory"
-                    onConfirm={handleCreateSubcategory}
-                >
-                    <InputField label="Subcategory Name" id="newSubcategoryName" value={newSubcategoryName} onChange={(e) => setNewSubcategoryName(e.target.value)} required={true} placeholder="e.g., Electrical" />
-                    <InputField label="Field 1 Label" id="newSubcategoryDesc1" value={newSubcategoryDesc1} onChange={(e) => setNewSubcategoryDesc1(e.target.value)} placeholder="e.g., Voltage" />
-                    <InputField label="Field 2 Label" id="newSubcategoryDesc2" value={newSubcategoryDesc2} onChange={(e) => setNewSubcategoryDesc2(e.target.value)} placeholder="e.g., Current" />
-                    <InputField label="Field 3 Label" id="newSubcategoryDesc3" value={newSubcategoryDesc3} onChange={(e) => setNewSubcategoryDesc3(e.target.value)} placeholder="e.g., Power" />
-                    <InputField label="Field 4 Label" id="newSubcategoryDesc4" value={newSubcategoryDesc4} onChange={(e) => setNewSubcategoryDesc4(e.target.value)} placeholder="e.g., Brand" />
-                    <InputField label="Field 5 Label" id="newSubcategoryDesc5" value={newSubcategoryDesc5} onChange={(e) => setNewSubcategoryDesc5(e.target.value)} placeholder="e.g., Model" />
-                </Modal>
 
                 <Modal
                     show={modal.show}
@@ -964,6 +1036,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
+    // Complete the SubcategoryManagerPage component
     const SubcategoryManagerPage = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [categories, setCategories] = useState([]);
@@ -1074,7 +1147,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setModal({
                 show: true,
                 title: "Confirm Deletion",
-                message: "Are you sure you want to delete this subcategory? This action cannot be undone.",
+                message: "Are you sure you want to delete this subcategory?",
                 showConfirmButton: true,
                 onConfirm: async () => {
                     try {
@@ -1099,8 +1172,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
                 <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Subcategory Manager</h2>
-                
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-8">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <SelectField
                         label="Category"
                         id="categorySelect"
@@ -1115,47 +1187,42 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                         value={subcategoryName} 
                         onChange={(e) => setSubcategoryName(e.target.value)} 
                         required={true} 
-                        placeholder="e.g., Electrical, Hydraulic, etc." 
+                        placeholder="e.g., Electrical" 
                     />
-                    
-                    <div className="md:col-span-2">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b border-gray-300 pb-2">Field Label Configuration</h3>
-                    </div>
-                    
                     <InputField 
                         label="Field 1 Label" 
                         id="field1Name" 
                         value={field1Name} 
                         onChange={(e) => setField1Name(e.target.value)} 
-                        placeholder="e.g., Voltage, Brand, Size" 
+                        placeholder="e.g., Component Type" 
                     />
                     <InputField 
                         label="Field 2 Label" 
                         id="field2Name" 
                         value={field2Name} 
                         onChange={(e) => setField2Name(e.target.value)} 
-                        placeholder="e.g., Current, Model, Color" 
+                        placeholder="e.g., Specification" 
                     />
                     <InputField 
                         label="Field 3 Label" 
                         id="field3Name" 
                         value={field3Name} 
                         onChange={(e) => setField3Name(e.target.value)} 
-                        placeholder="e.g., Power, Type, Material" 
+                        placeholder="e.g., Power Rating" 
                     />
                     <InputField 
                         label="Field 4 Label" 
                         id="field4Name" 
                         value={field4Name} 
                         onChange={(e) => setField4Name(e.target.value)} 
-                        placeholder="e.g., Phase, Grade, Dimension" 
+                        placeholder="e.g., Voltage" 
                     />
                     <InputField 
                         label="Field 5 Label" 
                         id="field5Name" 
                         value={field5Name} 
                         onChange={(e) => setField5Name(e.target.value)} 
-                        placeholder="e.g., Frequency, Capacity, Weight" 
+                        placeholder="e.g., Brand" 
                     />
 
                     <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
@@ -1390,40 +1457,51 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
     };
 
     // 5. Issue Note - Internal Form
+    // Updated Issue Note - Internal Form
     const IssueNoteInternalForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [departments, setDepartments] = useState([
             { label: 'Production', value: 'Production' },
-            { label: 'Maintenance', value: 'Maintenance' },
+            { label: 'Assembly', value: 'Assembly' },
             { label: 'Quality Control', value: 'Quality Control' },
             { label: 'R&D', value: 'R&D' }
-        ]); // Example departments, could be fetched from backend
-        const [items, setItems] = useState([]); // All items from item master
+        ]);
+        const [rawMaterialItems, setRawMaterialItems] = useState([]); // Only raw materials from main stock
         const [department, setDepartment] = useState('');
         const [issueNo, setIssueNo] = useState('');
         const [issueDate, setIssueDate] = useState('');
         const [issuedBy, setIssuedBy] = useState('');
-        const [issuedItems, setIssuedItems] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+        const [issuedItems, setIssuedItems] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
 
-        const fetchItems = async () => {
+        const fetchRawMaterials = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch(`${API_BASE_URL}/items`);
+                // Fetch only raw materials from main stock
+                const response = await fetch(`${API_BASE_URL}/items/by-category/Raw Material`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                setItems(data.map(i => ({ id: i.id, label: i.full_description, value: i.id, unitRate: parseFloat(i.unit_rate), stock: i.stock }))); // Convert to float here
+                setRawMaterialItems(data.map(i => ({ 
+                    id: i.id, 
+                    label: `${i.item_name} - ${i.full_description}`, 
+                    value: i.id, 
+                    unitRate: parseFloat(i.unit_rate), 
+                    stock: i.stock,
+                    itemCode: i.item_code,
+                    description: i.full_description,
+                    categoryName: i.category_name
+                })));
             } catch (error) {
-                console.error("Error fetching items for issue note:", error);
-                setModal({ show: true, title: "Error", message: "Failed to load items. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
+                console.error("Error fetching raw materials for issue note:", error);
+                setModal({ show: true, title: "Error", message: "Failed to load raw materials. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
             } finally {
                 setIsLoading(false);
             }
         };
 
         useEffect(() => {
-            fetchItems();
+            fetchRawMaterials();
         }, []);
 
         const handleItemChange = (index, field, value) => {
@@ -1431,16 +1509,17 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             updatedItems[index][field] = value;
 
             if (field === 'itemId') {
-                const selectedItem = items.find(i => i.value === Number(value));
+                const selectedItem = rawMaterialItems.find(i => i.value === Number(value));
                 if (selectedItem) {
                     updatedItems[index].unitRate = selectedItem.unitRate;
+                    updatedItems[index].availableStock = selectedItem.stock;
                 }
             }
             setIssuedItems(updatedItems);
         };
 
         const addItemRow = () => {
-            setIssuedItems([...issuedItems, { itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+            setIssuedItems([...issuedItems, { itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
         };
 
         const removeItemRow = (index) => {
@@ -1453,11 +1532,32 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setIssueNo('');
             setIssueDate('');
             setIssuedBy('');
-            setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+            setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
+        };
+
+        const validateStock = () => {
+            for (let item of issuedItems) {
+                if (Number(item.qty) > item.availableStock) {
+                    const selectedItem = rawMaterialItems.find(i => i.value === Number(item.itemId));
+                    setModal({ 
+                        show: true, 
+                        title: "Insufficient Stock", 
+                        message: `${selectedItem?.label || 'Selected item'} has only ${item.availableStock} units available in main stock, but you're trying to issue ${item.qty} units.`, 
+                        onClose: () => setModal({ ...modal, show: false }) 
+                    });
+                    return false;
+                }
+            }
+            return true;
         };
 
         const handleSubmit = async (e) => {
             e.preventDefault();
+
+            // Validate stock before submission
+            if (!validateStock()) {
+                return;
+            }
 
             const issueData = {
                 department,
@@ -1486,48 +1586,122 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
 
-                setModal({ show: true, title: "Success", message: "Issue Note entry added successfully and stock updated!", onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Success", 
+                    message: "Issue Note created successfully! Raw materials moved to production floor and main stock updated.", 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
                 resetForm();
-                fetchItems(); // Re-fetch items to update stock display
+                fetchRawMaterials(); // Re-fetch to update stock display
             } catch (error) {
                 console.error("Error adding issue note entry:", error);
-                setModal({ show: true, title: "Error", message: `Failed to save entry: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: `Failed to save entry: ${error.message}`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
             }
         };
 
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
-                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Issue Note - Internal</h2>
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    Issue Note - Internal (Raw Material to Production Floor)
+                </h2>
+                
+                {/* Info Banner */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center">
+                        <div className="text-blue-600 mr-3">ℹ️</div>
+                        <div>
+                            <h4 className="font-semibold text-blue-800">Production Material Issue</h4>
+                            <p className="text-blue-700 text-sm">
+                                This form transfers raw materials from main warehouse stock to production floor. 
+                                Materials will be available for production processes and finished goods creation.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
                         <SelectField label="Department" id="department" value={department} onChange={(e) => setDepartment(e.target.value)} options={departments} required={true} />
-                        <InputField label="Issue No." id="issueNo" value={issueNo} onChange={(e) => setIssueNo(e.target.value)} required={true} />
+                        <InputField label="Issue No." id="issueNo" value={issueNo} onChange={(e) => setIssueNo(e.target.value)} required={true} placeholder="e.g., ISS-001" />
                         <InputField label="Issue Date" id="issueDate" type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} required={true} />
-                        <InputField label="Issued By" id="issuedBy" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} required={true} />
+                        <InputField label="Issued By" id="issuedBy" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} required={true} placeholder="e.g., John Doe" />
                     </div>
 
-                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Items Issued</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Raw Materials to Issue</h3>
                     {isLoading ? <LoadingSpinner /> : (
                         issuedItems.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                                <SelectField label="Item" id={`issuedItem-${index}`} value={item.itemId} onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} options={items} required={true} className="col-span-2" />
-                                <InputField label="Unit Rate" id={`issuedUnitRate-${index}`} type="number" value={item.unitRate} readOnly={true} className="bg-gray-100" />
-                                <InputField label="UOM" id={`issuedUom-${index}`} value={item.uom} onChange={(e) => handleItemChange(index, 'uom', e.target.value)} placeholder="e.g., KG, PC" />
-                                <InputField label="Qty" id={`issuedQty-${index}`} type="number" value={item.qty} onChange={(e) => handleItemChange(index, 'qty', e.target.value)} required={true} />
-                                <div className="flex items-end justify-end col-span-full md:col-span-1">
-                                    <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">Remove</Button>
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                                <SelectField 
+                                    label="Raw Material Item" 
+                                    id={`issuedItem-${index}`} 
+                                    value={item.itemId} 
+                                    onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
+                                    options={rawMaterialItems} 
+                                    required={true} 
+                                    className="col-span-2" 
+                                />
+                                <InputField 
+                                    label="Unit Rate" 
+                                    id={`issuedUnitRate-${index}`} 
+                                    type="number" 
+                                    step="0.01"
+                                    value={item.unitRate} 
+                                    readOnly={true} 
+                                    className="bg-gray-100" 
+                                />
+                                <InputField 
+                                    label="UOM" 
+                                    id={`issuedUom-${index}`} 
+                                    value={item.uom} 
+                                    onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                    placeholder="e.g., KG, PC" 
+                                    required={true}
+                                />
+                                <div>
+                                    <InputField 
+                                        label={`Qty (Available: ${item.availableStock})`}
+                                        id={`issuedQty-${index}`} 
+                                        type="number" 
+                                        value={item.qty} 
+                                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
+                                        required={true}
+                                        className={Number(item.qty) > item.availableStock ? 'border-red-500 bg-red-50' : ''}
+                                    />
+                                    {Number(item.qty) > item.availableStock && (
+                                        <p className="text-red-500 text-xs mt-1">⚠️ Exceeds available stock</p>
+                                    )}
                                 </div>
-                                <InputField label="Remark" id={`issuedRemark-${index}`} value={item.remark} onChange={(e) => handleItemChange(index, 'remark', e.target.value)} className="col-span-full" />
+                                <div className="flex items-end justify-end">
+                                    <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">
+                                        Remove
+                                    </Button>
+                                </div>
+                                <InputField 
+                                    label="Remark" 
+                                    id={`issuedRemark-${index}`} 
+                                    value={item.remark} 
+                                    onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
+                                    className="col-span-full" 
+                                    placeholder="Optional notes about this material issue"
+                                />
                             </div>
                         ))
                     )}
 
                     <div className="flex justify-end mb-6">
-                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">Add Another Item</Button>
+                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">
+                            Add Another Raw Material
+                        </Button>
                     </div>
 
                     <div className="flex justify-end space-x-4">
-                        <Button type="submit">Submit Issue Note</Button>
+                        <Button type="submit">Issue Materials to Production Floor</Button>
                         <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
                     </div>
                 </form>
@@ -1543,61 +1717,53 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
-    // 6. Inward - Internal Form (Finished Goods from Production)
-    // 6. Inward - Internal Form (Finished Goods from Production)
     const InwardInternalForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [departments, setDepartments] = useState([
             { label: 'Production', value: 'Production' },
             { label: 'Assembly', value: 'Assembly' },
         ]);
-        const [allItems, setAllItems] = useState([]); // Store all items
-        const [finishedGoodsItems, setFinishedGoodsItems] = useState([]); // Filtered finished goods
-        const [rawMaterialItems, setRawMaterialItems] = useState([]); // Filtered raw materials
+        const [finishedGoodsItems, setFinishedGoodsItems] = useState([]); // Finished goods from main stock
+        const [productionFloorMaterials, setProductionFloorMaterials] = useState([]); // Raw materials on production floor
         const [receiptNo, setReceiptNo] = useState('');
         const [recvDate, setRecvDate] = useState('');
         const [receivedBy, setReceivedBy] = useState('');
         const [department, setDepartment] = useState('');
         const [finishGoods, setFinishGoods] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
-        const [materialUsed, setMaterialUsed] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+        const [materialUsed, setMaterialUsed] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableQty: 0 }]);
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
 
         const fetchItems = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch(`${API_BASE_URL}/items`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                
-                setAllItems(data);
-                
-                // Filter items by category name
-                const finishedGoods = data.filter(item => 
-                    item.category_name === 'Finish Good'
-                ).map(item => ({
+                // Fetch finished goods from main stock
+                const finishedGoodsResponse = await fetch(`${API_BASE_URL}/items/by-category/Finish Good`);
+                if (!finishedGoodsResponse.ok) throw new Error(`HTTP error! status: ${finishedGoodsResponse.status}`);
+                const finishedGoodsData = await finishedGoodsResponse.json();
+                setFinishedGoodsItems(finishedGoodsData.map(item => ({
                     id: item.id,
-                    label: item.full_description,
+                    label: `${item.item_name} - ${item.full_description}`,
                     value: item.id,
                     unitRate: parseFloat(item.unit_rate),
                     stock: item.stock
-                }));
-                
-                const rawMaterials = data.filter(item => 
-                    item.category_name === 'Raw Material'
-                ).map(item => ({
+                })));
+
+                // Fetch raw materials available on production floor
+                const productionFloorResponse = await fetch(`${API_BASE_URL}/production-floor-stocks`);
+                if (!productionFloorResponse.ok) throw new Error(`HTTP error! status: ${productionFloorResponse.status}`);
+                const productionFloorData = await productionFloorResponse.json();
+                setProductionFloorMaterials(productionFloorData.map(item => ({
                     id: item.id,
-                    label: item.full_description,
-                    value: item.id,
+                    label: `${item.item_code} - ${item.item_description}`,
+                    value: item.item_id,
                     unitRate: parseFloat(item.unit_rate),
-                    stock: item.stock
-                }));
+                    availableQty: item.quantity,
+                    uom: item.uom
+                })));
                 
-                setFinishedGoodsItems(finishedGoods);
-                setRawMaterialItems(rawMaterials);
-                
-                console.log("Filtered finished goods:", finishedGoods);
-                console.log("Filtered raw materials:", rawMaterials);
+                console.log("Finished goods loaded:", finishedGoodsData.length);
+                console.log("Production floor materials loaded:", productionFloorData.length);
             } catch (error) {
                 console.error("Error fetching items for inward internal:", error);
                 setModal({ show: true, title: "Error", message: "Failed to load items. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
@@ -1624,55 +1790,72 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setFinishGoods(updatedItems);
         };
 
-        // Handle changes for material used items
+        // Handle changes for material used items (from production floor)
         const handleMaterialUsedChange = (index, field, value) => {
             const updatedItems = [...materialUsed];
             updatedItems[index][field] = value;
 
             if (field === 'itemId') {
-                const selectedItem = rawMaterialItems.find(i => i.value === Number(value));
+                const selectedItem = productionFloorMaterials.find(i => i.value === Number(value));
                 if (selectedItem) {
                     updatedItems[index].unitRate = selectedItem.unitRate;
+                    updatedItems[index].availableQty = selectedItem.availableQty;
+                    updatedItems[index].uom = selectedItem.uom;
                 }
             }
             setMaterialUsed(updatedItems);
         };
 
-        // Add new finished good row
         const addFinishGoodRow = () => {
             setFinishGoods([...finishGoods, { itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
         };
 
-        // Remove finished good row
         const removeFinishGoodRow = (index) => {
             const updatedItems = finishGoods.filter((_, i) => i !== index);
             setFinishGoods(updatedItems);
         };
 
-        // Add new material used row
         const addMaterialUsedRow = () => {
-            setMaterialUsed([...materialUsed, { itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+            setMaterialUsed([...materialUsed, { itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableQty: 0 }]);
         };
 
-        // Remove material used row
         const removeMaterialUsedRow = (index) => {
             const updatedItems = materialUsed.filter((_, i) => i !== index);
             setMaterialUsed(updatedItems);
         };
 
-        // Reset form to initial state
         const resetForm = () => {
             setReceiptNo('');
             setRecvDate('');
             setReceivedBy('');
             setDepartment('');
             setFinishGoods([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
-            setMaterialUsed([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
+            setMaterialUsed([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableQty: 0 }]);
         };
 
-        // Handle form submission
+        const validateProductionFloorStock = () => {
+            for (let item of materialUsed) {
+                if (Number(item.qty) > item.availableQty) {
+                    const selectedItem = productionFloorMaterials.find(i => i.value === Number(item.itemId));
+                    setModal({ 
+                        show: true, 
+                        title: "Insufficient Production Floor Stock", 
+                        message: `${selectedItem?.label || 'Selected material'} has only ${item.availableQty} units available on production floor, but you're trying to use ${item.qty} units.`, 
+                        onClose: () => setModal({ ...modal, show: false }) 
+                    });
+                    return false;
+                }
+            }
+            return true;
+        };
+
         const handleSubmit = async (e) => {
             e.preventDefault();
+
+            // Validate production floor stock before submission
+            if (!validateProductionFloorStock()) {
+                return;
+            }
 
             const inwardData = {
                 receiptNo,
@@ -1711,7 +1894,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 setModal({ 
                     show: true, 
                     title: "Success", 
-                    message: "Inward Internal entry added successfully and stock updated!", 
+                    message: "Production entry recorded successfully! Finished goods added to stock and materials consumed from production floor.", 
                     onClose: () => setModal({ ...modal, show: false }) 
                 });
                 resetForm();
@@ -1729,19 +1912,38 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
-                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Inward - Internal (Finished Goods)</h2>
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    Inward - Internal (Production to Finished Goods)
+                </h2>
+                
+                {/* Info Banner */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center">
+                        <div className="text-green-600 mr-3">🏭</div>
+                        <div>
+                            <h4 className="font-semibold text-green-800">Production Completion Entry</h4>
+                            <p className="text-green-700 text-sm">
+                                Record finished goods created and raw materials consumed from production floor. 
+                                This will update main stock with new finished goods and reduce production floor material quantities.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
-                        <InputField label="Receipt No." id="receiptNo" value={receiptNo} onChange={(e) => setReceiptNo(e.target.value)} required={true} />
-                        <InputField label="Received Date" id="recvDate" type="date" value={recvDate} onChange={(e) => setRecvDate(e.target.value)} required={true} />
-                        <InputField label="Received By" id="receivedBy" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} required={true} />
+                        <InputField label="Receipt No." id="receiptNo" value={receiptNo} onChange={(e) => setReceiptNo(e.target.value)} required={true} placeholder="e.g., REC-001" />
+                        <InputField label="Production Date" id="recvDate" type="date" value={recvDate} onChange={(e) => setRecvDate(e.target.value)} required={true} />
+                        <InputField label="Received By" id="receivedBy" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} required={true} placeholder="e.g., Production Manager" />
                         <SelectField label="Department" id="department" value={department} onChange={(e) => setDepartment(e.target.value)} options={departments} required={true} />
                     </div>
 
-                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Finished Goods Received (Category: Finish Good)</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2 text-green-700">
+                        ✅ Finished Goods Produced
+                    </h3>
                     {isLoading ? <LoadingSpinner /> : (
                         finishGoods.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4 p-4 border border-green-200 rounded-lg bg-green-50">
                                 <SelectField 
                                     label="Finished Good Item" 
                                     id={`fgItem-${index}`} 
@@ -1751,49 +1953,64 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                                     required={true} 
                                     className="col-span-2" 
                                 />
-                                <InputField label="Unit Rate" id={`fgUnitRate-${index}`} type="number" value={item.unitRate} readOnly={true} className="bg-gray-100" />
-                                <InputField label="UOM" id={`fgUom-${index}`} value={item.uom} onChange={(e) => handleFinishGoodChange(index, 'uom', e.target.value)} placeholder="e.g., PC" />
-                                <InputField label="Qty" id={`fgQty-${index}`} type="number" value={item.qty} onChange={(e) => handleFinishGoodChange(index, 'qty', e.target.value)} required={true} />
-                                <div className="flex items-end justify-end col-span-full md:col-span-1">
+                                <InputField label="Unit Rate" id={`fgUnitRate-${index}`} type="number" step="0.01" value={item.unitRate} readOnly={true} className="bg-gray-100" />
+                                <InputField label="UOM" id={`fgUom-${index}`} value={item.uom} onChange={(e) => handleFinishGoodChange(index, 'uom', e.target.value)} placeholder="e.g., PC" required={true} />
+                                <InputField label="Quantity Produced" id={`fgQty-${index}`} type="number" value={item.qty} onChange={(e) => handleFinishGoodChange(index, 'qty', e.target.value)} required={true} />
+                                <div className="flex items-end justify-end">
                                     <Button onClick={() => removeFinishGoodRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">Remove</Button>
                                 </div>
-                                <InputField label="Remark" id={`fgRemark-${index}`} value={item.remark} onChange={(e) => handleFinishGoodChange(index, 'remark', e.target.value)} className="col-span-full" />
+                                <InputField label="Production Notes" id={`fgRemark-${index}`} value={item.remark} onChange={(e) => handleFinishGoodChange(index, 'remark', e.target.value)} className="col-span-full" placeholder="Notes about this production batch" />
                             </div>
                         ))
                     )}
                     <div className="flex justify-end mb-6">
-                        <Button onClick={addFinishGoodRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">Add Another Finished Good</Button>
+                        <Button onClick={addFinishGoodRow} className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg">Add Another Finished Good</Button>
                     </div>
 
-                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Raw Material Used in Production (Category: Raw Material)</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2 text-red-700">
+                        ❌ Raw Materials Consumed (From Production Floor)
+                    </h3>
                     {isLoading ? <LoadingSpinner /> : (
                         materialUsed.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-red-200 rounded-lg bg-red-50">
                                 <SelectField 
-                                    label="Raw Material Item" 
+                                    label="Production Floor Material" 
                                     id={`muItem-${index}`} 
                                     value={item.itemId} 
                                     onChange={(e) => handleMaterialUsedChange(index, 'itemId', e.target.value)} 
-                                    options={rawMaterialItems} 
+                                    options={productionFloorMaterials} 
                                     required={true} 
                                     className="col-span-2" 
                                 />
-                                <InputField label="Unit Rate" id={`muUnitRate-${index}`} type="number" value={item.unitRate} readOnly={true} className="bg-gray-100" />
-                                <InputField label="UOM" id={`muUom-${index}`} value={item.uom} onChange={(e) => handleMaterialUsedChange(index, 'uom', e.target.value)} placeholder="e.g., KG, PC" />
-                                <InputField label="Qty" id={`muQty-${index}`} type="number" value={item.qty} onChange={(e) => handleMaterialUsedChange(index, 'qty', e.target.value)} required={true} />
-                                <div className="flex items-end justify-end col-span-full md:col-span-1">
+                                <InputField label="Unit Rate" id={`muUnitRate-${index}`} type="number" step="0.01" value={item.unitRate} readOnly={true} className="bg-gray-100" />
+                                <InputField label="UOM" id={`muUom-${index}`} value={item.uom} readOnly={true} className="bg-gray-100" />
+                                <div>
+                                    <InputField 
+                                        label={`Qty Used (Available: ${item.availableQty})`}
+                                        id={`muQty-${index}`} 
+                                        type="number" 
+                                        value={item.qty} 
+                                        onChange={(e) => handleMaterialUsedChange(index, 'qty', e.target.value)} 
+                                        required={true}
+                                        className={Number(item.qty) > item.availableQty ? 'border-red-500 bg-red-100' : ''}
+                                    />
+                                    {Number(item.qty) > item.availableQty && (
+                                        <p className="text-red-600 text-xs mt-1">⚠️ Exceeds production floor stock</p>
+                                    )}
+                                </div>
+                                <div className="flex items-end justify-end">
                                     <Button onClick={() => removeMaterialUsedRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">Remove</Button>
                                 </div>
-                                <InputField label="Remark" id={`muRemark-${index}`} value={item.remark} onChange={(e) => handleMaterialUsedChange(index, 'remark', e.target.value)} className="col-span-full" />
+                                <InputField label="Usage Notes" id={`muRemark-${index}`} value={item.remark} onChange={(e) => handleMaterialUsedChange(index, 'remark', e.target.value)} className="col-span-full" placeholder="Notes about material consumption" />
                             </div>
                         ))
                     )}
                     <div className="flex justify-end mb-6">
-                        <Button onClick={addMaterialUsedRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">Add Another Material Used</Button>
+                        <Button onClick={addMaterialUsedRow} className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg">Add Another Material Used</Button>
                     </div>
 
                     <div className="flex justify-end space-x-4">
-                        <Button type="submit">Submit Inward (Internal) Entry</Button>
+                        <Button type="submit">Record Production Entry</Button>
                         <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
                     </div>
                 </form>
@@ -3060,4 +3277,125 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
+    // Add new component for Production Floor Stock Management
+    const ProductionFloorStockPage = () => {
+        const { API_BASE_URL } = useContext(AppContext);
+        const [productionStocks, setProductionStocks] = useState([]);
+        const [isLoading, setIsLoading] = useState(true);
+        const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+
+        const fetchProductionStocks = async () => {
+            setIsLoading(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/production-floor-stocks`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setProductionStocks(data);
+            } catch (error) {
+                console.error("Error fetching production floor stocks:", error);
+                setModal({ show: true, title: "Error", message: "Failed to load production floor stock data. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        useEffect(() => {
+            fetchProductionStocks();
+        }, []);
+
+        const getStockStatusColor = (currentStock, minLevel = 10) => {
+            if (currentStock <= minLevel) {
+                return 'text-red-600 font-bold';
+            } else if (currentStock > minLevel && currentStock <= minLevel * 1.5) {
+                return 'text-orange-600 font-bold';
+            }
+            return 'text-green-600';
+        };
+
+        return (
+            <div className="bg-white p-8 rounded-xl shadow-lg">
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    Production Floor Stock
+                </h2>
+                
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div className="bg-blue-50 p-6 rounded-lg shadow-md border border-blue-200">
+                        <div className="text-2xl mb-2 text-blue-600">🏭</div>
+                        <h3 className="text-lg font-semibold text-blue-800 mb-1">Total Items</h3>
+                        <p className="text-2xl font-bold text-blue-700">{productionStocks.length}</p>
+                        <p className="text-sm text-gray-600">On Production Floor</p>
+                    </div>
+                    
+                    <div className="bg-green-50 p-6 rounded-lg shadow-md border border-green-200">
+                        <div className="text-2xl mb-2 text-green-600">✅</div>
+                        <h3 className="text-lg font-semibold text-green-800 mb-1">Available</h3>
+                        <p className="text-2xl font-bold text-green-700">
+                            {productionStocks.filter(item => item.quantity > 10).length}
+                        </p>
+                        <p className="text-sm text-gray-600">Items in Good Stock</p>
+                    </div>
+                    
+                    <div className="bg-red-50 p-6 rounded-lg shadow-md border border-red-200">
+                        <div className="text-2xl mb-2 text-red-600">⚠️</div>
+                        <h3 className="text-lg font-semibold text-red-800 mb-1">Low Stock</h3>
+                        <p className="text-2xl font-bold text-red-700">
+                            {productionStocks.filter(item => item.quantity <= 10).length}
+                        </p>
+                        <p className="text-sm text-gray-600">Need Replenishment</p>
+                    </div>
+                </div>
+
+                {isLoading ? <LoadingSpinner /> : (
+                    <div className="overflow-x-auto rounded-lg shadow-md">
+                        <table className="min-w-full bg-white">
+                            <thead className="bg-blue-100">
+                                <tr>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Code</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Description</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Category</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Available Quantity</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Unit Rate</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Total Value</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Last Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {productionStocks.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="py-4 px-4 text-center text-gray-500">
+                                            No raw materials available on production floor.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    productionStocks.map((stock) => (
+                                        <tr key={stock.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                            <td className="py-3 px-4 text-sm text-gray-800 font-medium">{stock.item_code}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">{stock.item_description}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">{stock.category_name}</td>
+                                            <td className={`py-3 px-4 text-sm ${getStockStatusColor(stock.quantity)}`}>
+                                                {stock.quantity} {stock.uom}
+                                            </td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">₹{parseFloat(stock.unit_rate).toFixed(2)}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">₹{(parseFloat(stock.unit_rate) * parseFloat(stock.quantity)).toFixed(2)}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-800">{new Date(stock.updated_at).toLocaleDateString()}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                
+                <Modal
+                    show={modal.show}
+                    title={modal.title}
+                    message={modal.message}
+                    onClose={modal.onClose}
+                    onConfirm={modal.onConfirm}
+                    showConfirmButton={modal.showConfirmButton}
+                />
+            </div>
+        );
+    };
     export default App;

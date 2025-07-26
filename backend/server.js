@@ -63,6 +63,86 @@ const updateItemStock = async (itemId, quantityChange, type, connection) => {
     }
 };
 
+// Production Floor Stock Management
+app.get('/api/production-floor-stocks', async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT 
+                pfs.id,
+                pfs.item_id,
+                pfs.quantity,
+                pfs.unit_rate,
+                pfs.uom,
+                pfs.updated_at,
+                i.item_code,
+                i.full_description as item_description,
+                ic.category_name,
+                s.subcategory_name
+            FROM production_floor_stocks pfs
+            JOIN items i ON pfs.item_id = i.id
+            LEFT JOIN item_categories ic ON i.category_id = ic.id
+            LEFT JOIN subcategories s ON i.subcategory_id = s.id
+            WHERE pfs.quantity > 0
+            ORDER BY i.item_code
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error('Error fetching production floor stocks:', err);
+        res.status(500).json({ message: 'Error fetching production floor stocks', error: err.message });
+    }
+});
+
+// Helper function to update production floor stock
+const updateProductionFloorStock = async (itemId, quantityChange, type, connection) => {
+    try {
+        // Check if item exists in production floor stock
+        const [existingRows] = await connection.execute(
+            'SELECT quantity FROM production_floor_stocks WHERE item_id = ?',
+            [itemId]
+        );
+
+        if (existingRows.length === 0) {
+            // Create new entry if doesn't exist (only for inward)
+            if (type === 'inward') {
+                const [itemDetails] = await connection.execute(
+                    'SELECT unit_rate FROM items WHERE id = ?',
+                    [itemId]
+                );
+                
+                await connection.execute(
+                    'INSERT INTO production_floor_stocks (item_id, quantity, unit_rate, uom) VALUES (?, ?, ?, ?)',
+                    [itemId, quantityChange, itemDetails[0]?.unit_rate || 0, 'PC']
+                );
+                console.log(`New production floor stock entry created for item ${itemId} with quantity ${quantityChange}`);
+            }
+            return true;
+        }
+
+        const currentQuantity = existingRows[0].quantity;
+        let newQuantity = currentQuantity;
+
+        if (type === 'inward') {
+            newQuantity = currentQuantity + quantityChange;
+        } else if (type === 'outward') {
+            newQuantity = currentQuantity - quantityChange;
+            if (newQuantity < 0) {
+                throw new Error(`Insufficient production floor stock for item ${itemId}`);
+            }
+        }
+
+        await connection.execute(
+            'UPDATE production_floor_stocks SET quantity = ?, updated_at = NOW() WHERE item_id = ?',
+            [newQuantity, itemId]
+        );
+        
+        console.log(`Production floor stock for item ${itemId} updated to ${newQuantity}`);
+        return true;
+    } catch (error) {
+        console.error(`Error updating production floor stock for item ${itemId}:`, error);
+        throw error;
+    }
+};
+
 // API Endpoints
 
 // Parties
@@ -494,17 +574,22 @@ app.post('/api/issue-notes-internal', async (req, res) => {
         );
         const issueNoteId = issueResult.insertId;
 
-        // Insert Issue Note items and update stock
+        // Insert Issue Note items, update main stock (outward), and update production floor stock (inward)
         for (const item of items) {
             await connection.execute(
                 'INSERT INTO issue_note_internal_items (issue_note_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
                 [issueNoteId, item.itemId, item.unitRate, item.uom, item.qty, item.remark]
             );
+            
+            // Reduce from main stock
             await updateItemStock(item.itemId, item.qty, 'outward', connection);
+            
+            // Add to production floor stock
+            await updateProductionFloorStock(item.itemId, item.qty, 'inward', connection);
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Issue Note Internal entry added successfully and stock updated!', id: issueNoteId });
+        res.status(201).json({ message: 'Issue Note Internal entry added successfully! Stock moved to production floor.', id: issueNoteId });
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Error adding issue note internal entry:', err);
@@ -559,13 +644,16 @@ app.post('/api/inward-internals', async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // Check stock for materials used before proceeding
+        // Check production floor stock for materials used before proceeding
         if (materialUsed && materialUsed.length > 0) {
             for (const item of materialUsed) {
-                const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
-                if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
+                const [stockRows] = await connection.execute(
+                    'SELECT quantity FROM production_floor_stocks WHERE item_id = ?', 
+                    [item.itemId]
+                );
+                if (stockRows.length === 0 || stockRows[0].quantity < item.qty) {
                     await connection.rollback();
-                    return res.status(400).json({ message: `Not enough stock for material used item ID ${item.itemId}.` });
+                    return res.status(400).json({ message: `Not enough production floor stock for material used item ID ${item.itemId}.` });
                 }
             }
         }
@@ -577,7 +665,7 @@ app.post('/api/inward-internals', async (req, res) => {
         );
         const inwardInternalId = inwardInternalResult.insertId;
 
-        // Insert Finished Goods and update stock (inward)
+        // Insert Finished Goods and update main stock (inward)
         if (finishGoods && finishGoods.length > 0) {
             for (const fg of finishGoods) {
                 await connection.execute(
@@ -588,19 +676,21 @@ app.post('/api/inward-internals', async (req, res) => {
             }
         }
 
-        // Insert Materials Used and update stock (outward)
+        // Insert Materials Used and update production floor stock (outward)
         if (materialUsed && materialUsed.length > 0) {
             for (const mu of materialUsed) {
                 await connection.execute(
                     'INSERT INTO inward_internal_materials_used (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
                     [inwardInternalId, mu.itemId, mu.unitRate, mu.uom, mu.qty, mu.remark]
                 );
-                await updateItemStock(mu.itemId, mu.qty, 'outward', connection);
+                
+                // Reduce from production floor stock instead of main stock
+                await updateProductionFloorStock(mu.itemId, mu.qty, 'outward', connection);
             }
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Inward Internal entry added successfully and stock updated!', id: inwardInternalId });
+        res.status(201).json({ message: 'Inward Internal entry added successfully! Production completed and stocks updated.', id: inwardInternalId });
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Error adding inward internal entry:', err);
@@ -682,6 +772,74 @@ app.post('/api/outward-challans', async (req, res) => {
         res.status(500).json({ message: 'Error adding outward challan entry', error: err.message });
     } finally {
         if (connection) connection.release();
+    }
+});
+
+// Generate Item Code based on category and subcategory
+app.get('/api/items/generate-code/:categoryId/:subcategoryId', async (req, res) => {
+    const { categoryId, subcategoryId } = req.params;
+    
+    try {
+        // Get category and subcategory info
+        const [categoryRows] = await pool.execute(
+            'SELECT category_name FROM item_categories WHERE id = ?',
+            [categoryId]
+        );
+        
+        const [subcategoryRows] = await pool.execute(
+            'SELECT subcategory_name FROM subcategories WHERE id = ?',
+            [subcategoryId]
+        );
+        
+        if (categoryRows.length === 0 || subcategoryRows.length === 0) {
+            return res.status(404).json({ message: 'Category or Subcategory not found' });
+        }
+        
+        const categoryName = categoryRows[0].category_name;
+        const subcategoryName = subcategoryRows[0].subcategory_name;
+        
+        // Generate category prefix (first 2 letters of category)
+        const categoryPrefix = categoryName.substring(0, 2).toUpperCase();
+        
+        // Generate subcategory prefix (first 3 letters of subcategory)
+        const subcategoryPrefix = subcategoryName.substring(0, 3).toUpperCase();
+        
+        // Find the highest existing code for this category-subcategory combination
+        const [existingCodes] = await pool.execute(
+            `SELECT item_code FROM items 
+             WHERE category_id = ? AND subcategory_id = ? 
+             AND item_code LIKE CONCAT(?, ?, '%')
+             ORDER BY item_code DESC 
+             LIMIT 1`,
+            [categoryId, subcategoryId, categoryPrefix, subcategoryPrefix]
+        );
+        
+        let nextNumber = 1;
+        
+        if (existingCodes.length > 0) {
+            const lastCode = existingCodes[0].item_code;
+            // Extract the numeric part from the end of the code
+            const numericPart = lastCode.match(/(\d+)$/);
+            if (numericPart) {
+                nextNumber = parseInt(numericPart[1]) + 1;
+            }
+        }
+        
+        // Generate the new code with zero-padding (4 digits)
+        const newCode = `${categoryPrefix}${subcategoryPrefix}${nextNumber.toString().padStart(4, '0')}`;
+        
+        res.json({ 
+            itemCode: newCode,
+            categoryPrefix,
+            subcategoryPrefix,
+            nextNumber,
+            categoryName,
+            subcategoryName
+        });
+        
+    } catch (err) {
+        console.error('Error generating item code:', err);
+        res.status(500).json({ message: 'Error generating item code', error: err.message });
     }
 });
 

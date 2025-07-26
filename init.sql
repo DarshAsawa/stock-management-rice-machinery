@@ -368,6 +368,23 @@ CREATE TABLE IF NOT EXISTS outward_challan_items (
     CHECK (quantity > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Table: production_floor_stocks (Track materials available on production floor)
+CREATE TABLE IF NOT EXISTS production_floor_stocks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_id INT NOT NULL,
+    quantity INT NOT NULL DEFAULT 0,
+    unit_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    uom VARCHAR(50) NOT NULL DEFAULT 'PC',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT,
+    UNIQUE KEY unique_item_production_floor (item_id),
+    INDEX idx_item_id (item_id),
+    INDEX idx_quantity (quantity),
+    CHECK (quantity >= 0),
+    CHECK (unit_rate >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Create triggers for automatic timestamp updates
 DELIMITER //
 
@@ -380,6 +397,13 @@ END//
 
 CREATE TRIGGER IF NOT EXISTS update_items_updated_at
     BEFORE UPDATE ON items
+    FOR EACH ROW
+BEGIN
+    SET NEW.updated_at = CURRENT_TIMESTAMP;
+END//
+
+CREATE TRIGGER IF NOT EXISTS update_production_floor_stocks_updated_at
+    BEFORE UPDATE ON production_floor_stocks
     FOR EACH ROW
 BEGIN
     SET NEW.updated_at = CURRENT_TIMESTAMP;
