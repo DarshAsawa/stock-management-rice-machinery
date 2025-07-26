@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mysql_db:
+    image: mysql:8.0
+    container_name: mysql_db
+    environment:
+      MYSQL_ROOT_PASSWORD: password # Use a strong password in production
+      MYSQL_DATABASE: flour_mill_erp
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # This will run your schema creation SQL
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "3001:3001"
+    environment:
+      DB_HOST: mysql_db # Hostname of the MySQL service within the Docker network
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: flour_mill_erp
+    depends_on:
+      mysql_db:
+        condition: service_healthy # Ensure DB is healthy before starting backend
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - FAST_REFRESH=true
+      - REACT_APP_API_BASE_URL=http://localhost:3001/api
+    depends_on:
+      - backend # Frontend depends on backend to be available
+    stdin_open: true
+    tty: true
+
+  frontend-prod:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend-prod
+    ports:
+      - "81:80"
+    depends_on:
+      - backend
+    restart: always
+    environment:
+      REACT_APP_API_BASE_URL: http://backend:3001/api
+    profiles:
+      - production
+
+volumes:
+  mysql_data:
