@@ -1717,6 +1717,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
+    // ...existing code...
+
     const InwardInternalForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [departments, setDepartments] = useState([
@@ -1731,8 +1733,34 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         const [department, setDepartment] = useState('');
         const [finishGoods, setFinishGoods] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
         const [materialUsed, setMaterialUsed] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableQty: 0 }]);
+        
+        // New states for recent entries and editing
+        const [recentEntries, setRecentEntries] = useState([]);
+        const [editingEntry, setEditingEntry] = useState(null);
+        const [isLoadingReceipt, setIsLoadingReceipt] = useState(false);
+        
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+
+        // Generate auto-increment receipt number
+        const generateReceiptNumber = async () => {
+            if (editingEntry) return; // Don't generate new number when editing
+            
+            setIsLoadingReceipt(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/inward-internals/generate-receipt-number`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setReceiptNo(data.receiptNumber);
+            } catch (error) {
+                console.error("Error generating receipt number:", error);
+                // Fallback to timestamp-based number
+                const timestamp = Date.now();
+                setReceiptNo(`REC-${timestamp}`);
+            } finally {
+                setIsLoadingReceipt(false);
+            }
+        };
 
         const fetchItems = async () => {
             setIsLoading(true);
@@ -1761,9 +1789,6 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     availableQty: item.quantity,
                     uom: item.uom
                 })));
-                
-                console.log("Finished goods loaded:", finishedGoodsData.length);
-                console.log("Production floor materials loaded:", productionFloorData.length);
             } catch (error) {
                 console.error("Error fetching items for inward internal:", error);
                 setModal({ show: true, title: "Error", message: "Failed to load items. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
@@ -1772,8 +1797,21 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const fetchRecentEntries = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/inward-internals?limit=5&orderBy=created_at&order=DESC`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setRecentEntries(data);
+            } catch (error) {
+                console.error("Error fetching recent inward internal entries:", error);
+            }
+        };
+
         useEffect(() => {
             fetchItems();
+            fetchRecentEntries();
+            generateReceiptNumber();
         }, []);
 
         // Handle changes for finished goods items
@@ -1831,6 +1869,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setDepartment('');
             setFinishGoods([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '' }]);
             setMaterialUsed([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableQty: 0 }]);
+            setEditingEntry(null);
+            generateReceiptNumber();
         };
 
         const validateProductionFloorStock = () => {
@@ -1880,11 +1920,20 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             };
 
             try {
-                const response = await fetch(`${API_BASE_URL}/inward-internals`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(inwardData)
-                });
+                let response;
+                if (editingEntry) {
+                    response = await fetch(`${API_BASE_URL}/inward-internals/${editingEntry.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(inwardData)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/inward-internals`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(inwardData)
+                    });
+                }
 
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -1894,13 +1943,14 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 setModal({ 
                     show: true, 
                     title: "Success", 
-                    message: "Production entry recorded successfully! Finished goods added to stock and materials consumed from production floor.", 
+                    message: `Production entry ${editingEntry ? 'updated' : 'recorded'} successfully! Finished goods ${editingEntry ? 'updated in' : 'added to'} stock and materials consumed from production floor.`, 
                     onClose: () => setModal({ ...modal, show: false }) 
                 });
                 resetForm();
                 fetchItems(); // Re-fetch items to update stock display
+                fetchRecentEntries(); // Re-fetch recent entries
             } catch (error) {
-                console.error("Error adding inward internal entry:", error);
+                console.error("Error saving inward internal entry:", error);
                 setModal({ 
                     show: true, 
                     title: "Error", 
@@ -1910,21 +1960,226 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const handleEdit = (entry) => {
+            setEditingEntry(entry);
+            setReceiptNo(entry.receipt_no);
+            setRecvDate(entry.received_date.split('T')[0]); // Format date for input
+            setReceivedBy(entry.received_by);
+            setDepartment(entry.department);
+            
+            // Populate finished goods
+            if (entry.finishGoods && entry.finishGoods.length > 0) {
+                setFinishGoods(entry.finishGoods.map(item => ({
+                    itemId: item.item_id,
+                    unitRate: parseFloat(item.unit_rate),
+                    uom: item.uom,
+                    qty: parseFloat(item.quantity),
+                    remark: item.remark || ''
+                })));
+            }
+            
+            // Populate materials used
+            if (entry.materialUsed && entry.materialUsed.length > 0) {
+                setMaterialUsed(entry.materialUsed.map(item => ({
+                    itemId: item.item_id,
+                    unitRate: parseFloat(item.unit_rate),
+                    uom: item.uom,
+                    qty: parseFloat(item.quantity),
+                    remark: item.remark || '',
+                    availableQty: parseFloat(item.quantity) // Set current quantity as available for editing
+                })));
+            }
+        };
+
+        const handleDelete = (entryId) => {
+            setModal({
+                show: true,
+                title: "Confirm Deletion",
+                message: "Are you sure you want to delete this production entry? This action cannot be undone.",
+                showConfirmButton: true,
+                onConfirm: async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/inward-internals/${entryId}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        }
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: "Production entry deleted successfully!", 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        fetchRecentEntries(); // Re-fetch recent entries
+                        fetchItems(); // Re-fetch items to update stock
+                    } catch (error) {
+                        console.error("Error deleting inward internal entry:", error);
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete entry: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                    }
+                },
+                onClose: () => setModal({ ...modal, show: false })
+            });
+        };
+
+        const handlePrint = (entry) => {
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Production Entry - ${entry.receipt_no}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                        .document-title { font-size: 18px; color: #666; }
+                        .details-section { margin: 20px 0; }
+                        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+                        .detail-item { padding: 5px 0; }
+                        .detail-label { font-weight: bold; display: inline-block; width: 120px; }
+                        .items-section { margin: 20px 0; }
+                        .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                        .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        .items-table th { background-color: #f5f5f5; font-weight: bold; }
+                        .section-title { font-size: 16px; font-weight: bold; margin: 20px 0 10px 0; color: #333; }
+                        .finished-goods { border-left: 4px solid #10b981; padding-left: 10px; }
+                        .materials-used { border-left: 4px solid #ef4444; padding-left: 10px; }
+                        .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="company-name">Flour Mill ERP</div>
+                        <div class="document-title">Production Entry Receipt</div>
+                    </div>
+                    
+                    <div class="details-section">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Receipt No:</span>
+                                <span>${entry.receipt_no}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Date:</span>
+                                <span>${new Date(entry.received_date).toLocaleDateString()}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Department:</span>
+                                <span>${entry.department}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Received By:</span>
+                                <span>${entry.received_by}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="items-section finished-goods">
+                        <div class="section-title">✅ Finished Goods Produced</div>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Item Description</th>
+                                    <th>UOM</th>
+                                    <th>Quantity</th>
+                                    <th>Unit Rate</th>
+                                    <th>Total Value</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${entry.finishGoods && entry.finishGoods.length > 0 ? 
+                                    entry.finishGoods.map(item => `
+                                        <tr>
+                                            <td>${item.item_description}</td>
+                                            <td>${item.uom}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                            <td>₹${(parseFloat(item.quantity) * parseFloat(item.unit_rate)).toFixed(2)}</td>
+                                            <td>${item.remark || '-'}</td>
+                                        </tr>
+                                    `).join('') : 
+                                    '<tr><td colspan="6" style="text-align: center;">No finished goods recorded</td></tr>'
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="items-section materials-used">
+                        <div class="section-title">❌ Raw Materials Consumed</div>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Material Description</th>
+                                    <th>UOM</th>
+                                    <th>Quantity Used</th>
+                                    <th>Unit Rate</th>
+                                    <th>Total Value</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${entry.materialUsed && entry.materialUsed.length > 0 ? 
+                                    entry.materialUsed.map(item => `
+                                        <tr>
+                                            <td>${item.item_description}</td>
+                                            <td>${item.uom}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                            <td>₹${(parseFloat(item.quantity) * parseFloat(item.unit_rate)).toFixed(2)}</td>
+                                            <td>${item.remark || '-'}</td>
+                                        </tr>
+                                    `).join('') : 
+                                    '<tr><td colspan="6" style="text-align: center;">No materials consumed recorded</td></tr>'
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="footer">
+                        <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                        <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        };
+
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
                 <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
-                    Inward - Internal (Production to Finished Goods)
+                    {editingEntry ? 'Edit Production Entry' : 'Inward - Internal (Production to Finished Goods)'}
                 </h2>
                 
                 {/* Info Banner */}
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                <div className={`border rounded-lg p-4 mb-6 ${editingEntry ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
                     <div className="flex items-center">
-                        <div className="text-green-600 mr-3">🏭</div>
+                        <div className={`mr-3 ${editingEntry ? 'text-yellow-600' : 'text-green-600'}`}>
+                            {editingEntry ? '✏️' : '🏭'}
+                        </div>
                         <div>
-                            <h4 className="font-semibold text-green-800">Production Completion Entry</h4>
-                            <p className="text-green-700 text-sm">
-                                Record finished goods created and raw materials consumed from production floor. 
-                                This will update main stock with new finished goods and reduce production floor material quantities.
+                            <h4 className={`font-semibold ${editingEntry ? 'text-yellow-800' : 'text-green-800'}`}>
+                                {editingEntry ? 'Editing Production Entry' : 'Production Completion Entry'}
+                            </h4>
+                            <p className={`text-sm ${editingEntry ? 'text-yellow-700' : 'text-green-700'}`}>
+                                {editingEntry ? 
+                                    'You are editing an existing production entry. Changes will update stock levels accordingly.' :
+                                    'Record finished goods created and raw materials consumed from production floor. This will update main stock with new finished goods and reduce production floor material quantities.'
+                                }
                             </p>
                         </div>
                     </div>
@@ -1932,7 +2187,21 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
-                        <InputField label="Receipt No." id="receiptNo" value={receiptNo} onChange={(e) => setReceiptNo(e.target.value)} required={true} placeholder="e.g., REC-001" />
+                        <div className="relative">
+                            <InputField 
+                                label="Receipt No. (Auto-generated)" 
+                                id="receiptNo" 
+                                value={receiptNo} 
+                                readOnly={true}
+                                className="bg-gray-100 cursor-not-allowed"
+                                placeholder={isLoadingReceipt ? "Generating..." : "Auto-generated receipt number"}
+                            />
+                            {isLoadingReceipt && (
+                                <div className="absolute right-3 top-9">
+                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                </div>
+                            )}
+                        </div>
                         <InputField label="Production Date" id="recvDate" type="date" value={recvDate} onChange={(e) => setRecvDate(e.target.value)} required={true} />
                         <InputField label="Received By" id="receivedBy" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} required={true} placeholder="e.g., Production Manager" />
                         <SelectField label="Department" id="department" value={department} onChange={(e) => setDepartment(e.target.value)} options={departments} required={true} />
@@ -1986,15 +2255,15 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                                 <InputField label="UOM" id={`muUom-${index}`} value={item.uom} readOnly={true} className="bg-gray-100" />
                                 <div>
                                     <InputField 
-                                        label={`Qty Used (Available: ${item.availableQty})`}
+                                        label={`Qty Used ${!editingEntry ? `(Available: ${item.availableQty})` : ''}`}
                                         id={`muQty-${index}`} 
                                         type="number" 
                                         value={item.qty} 
                                         onChange={(e) => handleMaterialUsedChange(index, 'qty', e.target.value)} 
                                         required={true}
-                                        className={Number(item.qty) > item.availableQty ? 'border-red-500 bg-red-100' : ''}
+                                        className={!editingEntry && Number(item.qty) > item.availableQty ? 'border-red-500 bg-red-100' : ''}
                                     />
-                                    {Number(item.qty) > item.availableQty && (
+                                    {!editingEntry && Number(item.qty) > item.availableQty && (
                                         <p className="text-red-600 text-xs mt-1">⚠️ Exceeds production floor stock</p>
                                     )}
                                 </div>
@@ -2010,10 +2279,114 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     </div>
 
                     <div className="flex justify-end space-x-4">
-                        <Button type="submit">Record Production Entry</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
+                        <Button type="submit">
+                            {editingEntry ? 'Update Production Entry' : 'Record Production Entry'}
+                        </Button>
+                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">
+                            {editingEntry ? 'Cancel Edit' : 'Clear Form'}
+                        </Button>
                     </div>
                 </form>
+
+                {/* Recent Entries Section */}
+                <div className="mt-12 border-t-2 border-gray-200 pt-8">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-blue-400 pb-2">
+                        Recent Production Entries (Last 5)
+                    </h3>
+                    
+                    {recentEntries.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-4xl mb-4">📝</div>
+                            <p>No production entries recorded yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {recentEntries.map((entry) => (
+                                <div key={entry.id} className="bg-gray-50 border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Receipt No:</span>
+                                                <p className="text-lg font-bold text-blue-700">{entry.receipt_no}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Date:</span>
+                                                <p className="text-gray-800">{new Date(entry.received_date).toLocaleDateString()}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Department:</span>
+                                                <p className="text-gray-800">{entry.department}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Received By:</span>
+                                                <p className="text-gray-800">{entry.received_by}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex space-x-2 ml-4">
+                                            <Button 
+                                                onClick={() => handleEdit(entry)} 
+                                                className="bg-blue-500 hover:bg-blue-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                ✏️ Edit
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handlePrint(entry)} 
+                                                className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🖨️ Print
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handleDelete(entry.id)} 
+                                                className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🗑️ Delete
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="border-l-4 border-green-500 pl-4">
+                                            <h4 className="font-semibold text-green-700 mb-2">✅ Finished Goods Produced</h4>
+                                            {entry.finishGoods && entry.finishGoods.length > 0 ? (
+                                                <div className="space-y-1">
+                                                    {entry.finishGoods.map((item, idx) => (
+                                                        <div key={idx} className="text-sm text-gray-700">
+                                                            <strong>{item.item_description}</strong> - {item.quantity} {item.uom}
+                                                            {item.remark && <span className="text-gray-500"> ({item.remark})</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-500">No finished goods recorded</p>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="border-l-4 border-red-500 pl-4">
+                                            <h4 className="font-semibold text-red-700 mb-2">❌ Materials Consumed</h4>
+                                            {entry.materialUsed && entry.materialUsed.length > 0 ? (
+                                                <div className="space-y-1">
+                                                    {entry.materialUsed.map((item, idx) => (
+                                                        <div key={idx} className="text-sm text-gray-700">
+                                                            <strong>{item.item_description}</strong> - {item.quantity} {item.uom}
+                                                            {item.remark && <span className="text-gray-500"> ({item.remark})</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-500">No materials consumed recorded</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4 pt-4 border-t border-gray-300 text-xs text-gray-500">
+                                        Created: {new Date(entry.created_at).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 <Modal
                     show={modal.show}
                     title={modal.title}
@@ -2027,17 +2400,21 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
     };
 
     // 7. Outward Challan / Dispatch Note Form
+    // ...existing code...
+
+// 7. Outward Challan / Dispatch Note Form
     const OutwardChallanForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [parties, setParties] = useState([]);
-        const [items, setItems] = useState([]); // Will be finished goods
+        const [items, setItems] = useState([]); // All items
+        const [categories, setCategories] = useState([]); // Add categories state
         const [selectedPartyId, setSelectedPartyId] = useState(''); // Store party ID
         const [challanNo, setChallanNo] = useState('');
         const [challanDate, setChallanDate] = useState('');
         const [transport, setTransport] = useState('');
         const [lrNo, setLrNo] = useState('');
         const [remark, setRemark] = useState('');
-        const [outwardItems, setOutwardItems] = useState([{ itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
+        const [outwardItems, setOutwardItems] = useState([{ categoryId: '', itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
         const [showNewPartyModal, setShowNewPartyModal] = useState(false);
@@ -2051,7 +2428,6 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         const [newPartyBankName, setNewPartyBankName] = useState('');
         const [newPartyIfscCode, setNewPartyIfscCode] = useState('');
 
-
         const fetchInitialData = async () => {
             setIsLoading(true);
             try {
@@ -2061,15 +2437,23 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 const partyData = await partyResponse.json();
                 setParties(partyData.map(p => ({ id: p.id, label: p.party_name, value: p.id })));
 
-                // Fetch only finished goods items using the category filter
-                const itemResponse = await fetch(`${API_BASE_URL}/items/by-category/Finish Good`);
+                // Fetch categories
+                const categoryResponse = await fetch(`${API_BASE_URL}/categories`);
+                if (!categoryResponse.ok) throw new Error(`HTTP error! status: ${categoryResponse.status}`);
+                const categoryData = await categoryResponse.json();
+                setCategories(categoryData.map(cat => ({ id: cat.id, label: cat.category_name, value: cat.id })));
+
+                // Fetch all items (we'll filter them based on category selection)
+                const itemResponse = await fetch(`${API_BASE_URL}/items`);
                 if (!itemResponse.ok) throw new Error(`HTTP error! status: ${itemResponse.status}`);
                 const itemData = await itemResponse.json();
                 setItems(itemData.map(item => ({ 
                     id: item.id, 
-                    label: item.full_description, 
+                    label: `${item.item_name} - ${item.full_description}`, 
                     value: item.id, 
-                    stock: item.stock 
+                    stock: item.stock,
+                    categoryId: item.category_id,
+                    categoryName: item.category_name
                 })));
             } catch (error) {
                 console.error("Error fetching initial data for Outward Challan:", error);
@@ -2086,11 +2470,23 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         const handleItemChange = (index, field, value) => {
             const updatedItems = [...outwardItems];
             updatedItems[index][field] = value;
+
+            // If category is changed, reset the item selection
+            if (field === 'categoryId') {
+                updatedItems[index].itemId = '';
+            }
+
             setOutwardItems(updatedItems);
         };
 
+        // Get filtered items based on selected category for a specific row
+        const getFilteredItems = (categoryId) => {
+            if (!categoryId) return [];
+            return items.filter(item => item.categoryId === parseInt(categoryId));
+        };
+
         const addItemRow = () => {
-            setOutwardItems([...outwardItems, { itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
+            setOutwardItems([...outwardItems, { categoryId: '', itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
         };
 
         const removeItemRow = (index) => {
@@ -2105,7 +2501,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setTransport('');
             setLrNo('');
             setRemark('');
-            setOutwardItems([{ itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
+            setOutwardItems([{ categoryId: '', itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
         };
 
         const resetNewPartyForm = () => {
@@ -2158,8 +2554,31 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const validateStock = () => {
+            for (let item of outwardItems) {
+                if (item.itemId) {
+                    const selectedItem = items.find(i => i.value === Number(item.itemId));
+                    if (selectedItem && Number(item.qty) > selectedItem.stock) {
+                        setModal({ 
+                            show: true, 
+                            title: "Insufficient Stock", 
+                            message: `${selectedItem.label} has only ${selectedItem.stock} units available, but you're trying to dispatch ${item.qty} units.`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
         const handleSubmit = async (e) => {
             e.preventDefault();
+
+            // Validate stock before submission
+            if (!validateStock()) {
+                return;
+            }
 
             const outwardData = {
                 partyId: Number(selectedPartyId),
@@ -2201,6 +2620,20 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
                 <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Outward Challan / Dispatch Note</h2>
+                
+                {/* Info Banner */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center">
+                        <div className="text-blue-600 mr-3">🚚</div>
+                        <div>
+                            <h4 className="font-semibold text-blue-800">Item Selection Process</h4>
+                            <p className="text-blue-700 text-sm">
+                                First select a category, then choose the specific item from that category. Stock availability will be validated before dispatch.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
                         <div className="flex items-end gap-2">
@@ -2216,19 +2649,70 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                         <InputField label="Remark (Header)" id="headerRemark" value={remark} onChange={(e) => setRemark(e.target.value)} className="col-span-full" />
                     </div>
 
-                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Items Dispatched</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Items to Dispatch</h3>
                     {isLoading ? <LoadingSpinner /> : (
-                        outwardItems.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                                <SelectField label="Item" id={`outwardItem-${index}`} value={item.itemId} onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} options={items} required={true} className="col-span-2" />
-                                <InputField label="Value of Goods UOM" id={`uom-${index}`} value={item.valueOfGoodsUom} onChange={(e) => handleItemChange(index, 'valueOfGoodsUom', e.target.value)} placeholder="e.g., PC, KG" />
-                                <InputField label="Qty" id={`qty-${index}`} type="number" value={item.qty} onChange={(e) => handleItemChange(index, 'qty', e.target.value)} required={true} />
-                                <div className="flex items-end justify-end col-span-full md:col-span-1">
-                                    <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">Remove</Button>
+                        outwardItems.map((item, index) => {
+                            const filteredItems = getFilteredItems(item.categoryId);
+                            const selectedItem = items.find(i => i.value === Number(item.itemId));
+                            
+                            return (
+                                <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                                    <SelectField 
+                                        label="Category" 
+                                        id={`category-${index}`} 
+                                        value={item.categoryId} 
+                                        onChange={(e) => handleItemChange(index, 'categoryId', e.target.value)} 
+                                        options={categories} 
+                                        required={true} 
+                                    />
+                                    <SelectField 
+                                        label={`Item ${selectedItem ? `(Stock: ${selectedItem.stock})` : ''}`}
+                                        id={`outwardItem-${index}`} 
+                                        value={item.itemId} 
+                                        onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
+                                        options={filteredItems} 
+                                        required={true} 
+                                        disabled={!item.categoryId}
+                                        className={!item.categoryId ? 'opacity-50' : ''}
+                                    />
+                                    <InputField 
+                                        label="UOM" 
+                                        id={`uom-${index}`} 
+                                        value={item.valueOfGoodsUom} 
+                                        onChange={(e) => handleItemChange(index, 'valueOfGoodsUom', e.target.value)} 
+                                        placeholder="e.g., PC, KG" 
+                                        required={true}
+                                    />
+                                    <div>
+                                        <InputField 
+                                            label={`Quantity ${selectedItem ? `(Available: ${selectedItem.stock})` : ''}`}
+                                            id={`qty-${index}`} 
+                                            type="number" 
+                                            value={item.qty} 
+                                            onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
+                                            required={true}
+                                            className={selectedItem && Number(item.qty) > selectedItem.stock ? 'border-red-500 bg-red-50' : ''}
+                                        />
+                                        {selectedItem && Number(item.qty) > selectedItem.stock && (
+                                            <p className="text-red-500 text-xs mt-1">⚠️ Exceeds available stock</p>
+                                        )}
+                                    </div>
+                                    <div className="flex items-end justify-center">
+                                        <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">
+                                            Remove
+                                        </Button>
+                                    </div>
+                                    <InputField 
+                                        label="Item Remark" 
+                                        id={`itemRemark-${index}`} 
+                                        value={item.remark} 
+                                        onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
+                                        className="col-span-full" 
+                                        placeholder="Optional notes for this item"
+                                    />
                                 </div>
-                                <InputField label="Remark" id={`itemRemark-${index}`} value={item.remark} onChange={(e) => handleItemChange(index, 'remark', e.target.value)} className="col-span-full" />
-                            </div>
-                        ))
+                            );
+                        })
                     )}
 
                     <div className="flex justify-end mb-6">
@@ -2270,6 +2754,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             </div>
         );
     };
+
+// ...existing code...
 
     // New Stock Control Page Component
     const StockControlPage = () => {

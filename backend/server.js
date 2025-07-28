@@ -700,38 +700,89 @@ app.post('/api/inward-internals', async (req, res) => {
     }
 });
 
-// Outward Challan
-app.get('/api/outward-challans', async (req, res) => {
+// Generate auto-increment receipt number for inward internals
+app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
     try {
-        const [rows] = await pool.execute(`
-            SELECT oc.*, p.party_name AS party_name
-            FROM outward_challans oc
-            JOIN parties p ON oc.party_id = p.id
-            ORDER BY oc.created_at DESC
-        `);
-        for (let i = 0; i < rows.length; i++) {
-            const [items] = await pool.execute(`
-                SELECT oci.*, it.full_description AS item_description, it.item_name,
-                       ic.category_name, s.subcategory_name
-                FROM outward_challan_items oci
-                JOIN items it ON oci.item_id = it.id
-                LEFT JOIN item_categories ic ON it.category_id = ic.id
-                LEFT JOIN subcategories s ON it.subcategory_id = s.id
-                WHERE oci.outward_challan_id = ?
-            `, [rows[i].id]);
-            rows[i].items = items;
+        // Get the latest receipt number
+        const [rows] = await pool.execute(
+            'SELECT receipt_no FROM inward_internals ORDER BY id DESC LIMIT 1'
+        );
+        
+        let nextNumber = 1;
+        let prefix = 'INT-REC-';
+        
+        if (rows.length > 0) {
+            const lastReceiptNo = rows[0].receipt_no;
+            // Extract number from receipt like "INT-REC-001"
+            const match = lastReceiptNo.match(/INT-REC-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+            }
         }
-        res.json(rows);
+        
+        // Generate new receipt number with zero padding
+        const newReceiptNo = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        
+        res.json({ receiptNumber: newReceiptNo });
     } catch (err) {
-        console.error('Error fetching outward challans:', err);
-        res.status(500).json({ message: 'Error fetching outward challans', error: err.message });
+        console.error('Error generating receipt number:', err);
+        res.status(500).json({ message: 'Error generating receipt number', error: err.message });
     }
 });
 
-app.post('/api/outward-challans', async (req, res) => {
-    const { partyId, challanNo, challanDate, transport, lrNo, remark, items, userId } = req.body;
-    if (!partyId || !challanNo || !challanDate || !items || items.length === 0) {
-        return res.status(400).json({ message: 'Required fields are missing for Outward Challan.' });
+// Get recent inward internal entries with limit and ordering
+app.get('/api/inward-internals', async (req, res) => {
+    const { limit = 50, orderBy = 'created_at', order = 'DESC' } = req.query;
+    
+    try {
+        const [rows] = await pool.execute(
+            `SELECT * FROM inward_internals 
+             ORDER BY ${orderBy} ${order} 
+             LIMIT ?`,
+            [parseInt(limit)]
+        );
+        
+        // Fetch associated items for each entry
+        for (let i = 0; i < rows.length; i++) {
+            // Get finished goods
+            const [finishedGoods] = await pool.execute(`
+                SELECT iifg.*, it.full_description AS item_description, it.item_name,
+                       ic.category_name, s.subcategory_name
+                FROM inward_internal_finished_goods iifg
+                JOIN items it ON iifg.item_id = it.id
+                LEFT JOIN item_categories ic ON it.category_id = ic.id
+                LEFT JOIN subcategories s ON it.subcategory_id = s.id
+                WHERE iifg.inward_internal_id = ?
+            `, [rows[i].id]);
+            rows[i].finishGoods = finishedGoods;
+
+            // Get materials used
+            const [materialsUsed] = await pool.execute(`
+                SELECT iimu.*, it.full_description AS item_description, it.item_name,
+                       ic.category_name, s.subcategory_name
+                FROM inward_internal_materials_used iimu
+                JOIN items it ON iimu.item_id = it.id
+                LEFT JOIN item_categories ic ON it.category_id = ic.id
+                LEFT JOIN subcategories s ON it.subcategory_id = s.id
+                WHERE iimu.inward_internal_id = ?
+            `, [rows[i].id]);
+            rows[i].materialUsed = materialsUsed;
+        }
+        
+        res.json(rows);
+    } catch (err) {
+        console.error('Error fetching inward internals:', err);
+        res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
+    }
+});
+
+// Update existing inward internal entry
+app.put('/api/inward-internals/:id', async (req, res) => {
+    const { id } = req.params;
+    const { receiptNo, receivedDate, receivedBy, department, finishGoods, materialUsed, userId } = req.body;
+    
+    if (!receiptNo || !receivedDate || !receivedBy || !department) {
+        return res.status(400).json({ message: 'Required fields are missing for Inward Internal update.' });
     }
 
     let connection;
@@ -739,107 +790,155 @@ app.post('/api/outward-challans', async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // Check stock levels before proceeding
-        for (const item of items) {
-            const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
-            if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
-                await connection.rollback();
-                return res.status(400).json({ message: `Not enough stock for item ID ${item.itemId}.` });
+        // First, get the existing entry to reverse its stock effects
+        const [existingEntry] = await connection.execute(
+            'SELECT * FROM inward_internals WHERE id = ?',
+            [id]
+        );
+        
+        if (existingEntry.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Inward Internal entry not found.' });
+        }
+
+        // Get existing finished goods and reverse their stock impact
+        const [existingFinishedGoods] = await connection.execute(
+            'SELECT * FROM inward_internal_finished_goods WHERE inward_internal_id = ?',
+            [id]
+        );
+        
+        for (const fg of existingFinishedGoods) {
+            // Reverse the previous inward effect (reduce main stock)
+            await updateItemStock(fg.item_id, fg.quantity, 'outward', connection);
+        }
+
+        // Get existing materials used and reverse their stock impact
+        const [existingMaterialsUsed] = await connection.execute(
+            'SELECT * FROM inward_internal_materials_used WHERE inward_internal_id = ?',
+            [id]
+        );
+        
+        for (const mu of existingMaterialsUsed) {
+            // Reverse the previous outward effect (add back to production floor stock)
+            await updateProductionFloorStock(mu.item_id, mu.quantity, 'inward', connection);
+        }
+
+        // Delete existing related records
+        await connection.execute('DELETE FROM inward_internal_finished_goods WHERE inward_internal_id = ?', [id]);
+        await connection.execute('DELETE FROM inward_internal_materials_used WHERE inward_internal_id = ?', [id]);
+
+        // Update the main record
+        await connection.execute(
+            'UPDATE inward_internals SET receipt_no = ?, received_date = ?, received_by = ?, department = ?, updated_at = NOW() WHERE id = ?',
+            [receiptNo, receivedDate, receivedBy, department, id]
+        );
+
+        // Check production floor stock for new materials used
+        if (materialUsed && materialUsed.length > 0) {
+            for (const item of materialUsed) {
+                const [stockRows] = await connection.execute(
+                    'SELECT quantity FROM production_floor_stocks WHERE item_id = ?',
+                    [item.itemId]
+                );
+                if (stockRows.length === 0 || stockRows[0].quantity < item.qty) {
+                    await connection.rollback();
+                    return res.status(400).json({ 
+                        message: `Not enough production floor stock for material used item ID ${item.itemId}.` 
+                    });
+                }
             }
         }
 
-        // Insert Outward Challan header
-        const [challanResult] = await connection.execute(
-            'INSERT INTO outward_challans (party_id, challan_no, challan_date, transport, lr_no, remark, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [partyId, challanNo, challanDate, transport, lrNo, remark, userId]
-        );
-        const outwardChallanId = challanResult.insertId;
+        // Insert new finished goods and update main stock
+        if (finishGoods && finishGoods.length > 0) {
+            for (const fg of finishGoods) {
+                await connection.execute(
+                    'INSERT INTO inward_internal_finished_goods (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                    [id, fg.itemId, fg.unitRate, fg.uom, fg.qty, fg.remark]
+                );
+                await updateItemStock(fg.itemId, fg.qty, 'inward', connection);
+            }
+        }
 
-        // Insert Outward Challan items and update stock
-        for (const item of items) {
-            await connection.execute(
-                'INSERT INTO outward_challan_items (outward_challan_id, item_id, value_of_goods_uom, quantity, remark) VALUES (?, ?, ?, ?, ?)',
-                [outwardChallanId, item.itemId, item.valueOfGoodsUom, item.qty, item.remark]
-            );
-            await updateItemStock(item.itemId, item.qty, 'outward', connection);
+        // Insert new materials used and update production floor stock
+        if (materialUsed && materialUsed.length > 0) {
+            for (const mu of materialUsed) {
+                await connection.execute(
+                    'INSERT INTO inward_internal_materials_used (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                    [id, mu.itemId, mu.unitRate, mu.uom, mu.qty, mu.remark]
+                );
+                await updateProductionFloorStock(mu.itemId, mu.qty, 'outward', connection);
+            }
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Outward Challan entry added successfully and stock updated!', id: outwardChallanId });
+        res.json({ message: 'Inward Internal entry updated successfully! Stocks adjusted accordingly.' });
     } catch (err) {
         if (connection) await connection.rollback();
-        console.error('Error adding outward challan entry:', err);
-        res.status(500).json({ message: 'Error adding outward challan entry', error: err.message });
+        console.error('Error updating inward internal entry:', err);
+        res.status(500).json({ message: 'Error updating inward internal entry', error: err.message });
     } finally {
         if (connection) connection.release();
     }
 });
 
-// Generate Item Code based on category and subcategory
-app.get('/api/items/generate-code/:categoryId/:subcategoryId', async (req, res) => {
-    const { categoryId, subcategoryId } = req.params;
-    
+// Delete inward internal entry
+app.delete('/api/inward-internals/:id', async (req, res) => {
+    const { id } = req.params;
+
+    let connection;
     try {
-        // Get category and subcategory info
-        const [categoryRows] = await pool.execute(
-            'SELECT category_name FROM item_categories WHERE id = ?',
-            [categoryId]
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Get the entry to reverse its stock effects
+        const [entry] = await connection.execute(
+            'SELECT * FROM inward_internals WHERE id = ?',
+            [id]
         );
         
-        const [subcategoryRows] = await pool.execute(
-            'SELECT subcategory_name FROM subcategories WHERE id = ?',
-            [subcategoryId]
-        );
-        
-        if (categoryRows.length === 0 || subcategoryRows.length === 0) {
-            return res.status(404).json({ message: 'Category or Subcategory not found' });
+        if (entry.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Inward Internal entry not found.' });
         }
-        
-        const categoryName = categoryRows[0].category_name;
-        const subcategoryName = subcategoryRows[0].subcategory_name;
-        
-        // Generate category prefix (first 2 letters of category)
-        const categoryPrefix = categoryName.substring(0, 2).toUpperCase();
-        
-        // Generate subcategory prefix (first 3 letters of subcategory)
-        const subcategoryPrefix = subcategoryName.substring(0, 3).toUpperCase();
-        
-        // Find the highest existing code for this category-subcategory combination
-        const [existingCodes] = await pool.execute(
-            `SELECT item_code FROM items 
-             WHERE category_id = ? AND subcategory_id = ? 
-             AND item_code LIKE CONCAT(?, ?, '%')
-             ORDER BY item_code DESC 
-             LIMIT 1`,
-            [categoryId, subcategoryId, categoryPrefix, subcategoryPrefix]
+
+        // Get finished goods and reverse their stock impact
+        const [finishedGoods] = await connection.execute(
+            'SELECT * FROM inward_internal_finished_goods WHERE inward_internal_id = ?',
+            [id]
         );
         
-        let nextNumber = 1;
-        
-        if (existingCodes.length > 0) {
-            const lastCode = existingCodes[0].item_code;
-            // Extract the numeric part from the end of the code
-            const numericPart = lastCode.match(/(\d+)$/);
-            if (numericPart) {
-                nextNumber = parseInt(numericPart[1]) + 1;
-            }
+        for (const fg of finishedGoods) {
+            // Reverse the inward effect (reduce main stock)
+            await updateItemStock(fg.item_id, fg.quantity, 'outward', connection);
         }
+
+        // Get materials used and reverse their stock impact
+        const [materialsUsed] = await connection.execute(
+            'SELECT * FROM inward_internal_materials_used WHERE inward_internal_id = ?',
+            [id]
+        );
         
-        // Generate the new code with zero-padding (4 digits)
-        const newCode = `${categoryPrefix}${subcategoryPrefix}${nextNumber.toString().padStart(4, '0')}`;
+        for (const mu of materialsUsed) {
+            // Reverse the outward effect (add back to production floor stock)
+            await updateProductionFloorStock(mu.item_id, mu.quantity, 'inward', connection);
+        }
+
+        // Delete related records
+        await connection.execute('DELETE FROM inward_internal_finished_goods WHERE inward_internal_id = ?', [id]);
+        await connection.execute('DELETE FROM inward_internal_materials_used WHERE inward_internal_id = ?', [id]);
         
-        res.json({ 
-            itemCode: newCode,
-            categoryPrefix,
-            subcategoryPrefix,
-            nextNumber,
-            categoryName,
-            subcategoryName
-        });
-        
+        // Delete main record
+        await connection.execute('DELETE FROM inward_internals WHERE id = ?', [id]);
+
+        await connection.commit();
+        res.json({ message: 'Inward Internal entry deleted successfully! Stock levels restored.' });
     } catch (err) {
-        console.error('Error generating item code:', err);
-        res.status(500).json({ message: 'Error generating item code', error: err.message });
+        if (connection) await connection.rollback();
+        console.error('Error deleting inward internal entry:', err);
+        res.status(500).json({ message: 'Error deleting inward internal entry', error: err.message });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
