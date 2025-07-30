@@ -487,9 +487,10 @@ app.get('/api/gate-inwards', async (req, res) => {
 });
 
 app.post('/api/gate-inwards', async (req, res) => {
-    const { billNo, billDate, supplierId, grn, grnDate, paymentTerms, items, userId } = req.body;
-    if (!billNo || !billDate || !supplierId || !grn || !grnDate || !items || items.length === 0) {
-        return res.status(400).json({ message: 'Required fields are missing for Gate Inward.' });
+    const { grn, grnDate, billNo, billDate, supplierId, paymentTerms, items, userId } = req.body;
+    
+    if (!grn || !grnDate || !supplierId || !items || items.length === 0) {
+        return res.status(400).json({ message: 'GRN number, GRN date, supplier, and items are required for Gate Inward.' });
     }
 
     let connection;
@@ -497,28 +498,181 @@ app.post('/api/gate-inwards', async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // Insert Gate Inward header
-        const [inwardResult] = await connection.execute(
-            'INSERT INTO gate_inwards (bill_no, bill_date, supplier_id, grn_number, grn_date, payment_terms, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [billNo, billDate, supplierId, grn, grnDate, paymentTerms, userId]
+        // Check if GRN already exists (safety check)
+        const [existingGrn] = await connection.execute(
+            'SELECT id FROM gate_inwards WHERE grn_number = ?',
+            [grn]
         );
-        const gateInwardId = inwardResult.insertId;
-
-        // Insert Gate Inward items and update stock
-        for (const item of items) {
-            await connection.execute(
-                'INSERT INTO gate_inward_items (gate_inward_id, item_id, unit_rate, uom, quantity, amount, remark) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [gateInwardId, item.itemId, item.unitRate, item.uom, item.qty, item.amount, item.remark]
+        
+        if (existingGrn.length > 0) {
+            // If GRN exists, generate a new one automatically
+            const [countResult] = await connection.execute('SELECT COUNT(*) as total FROM gate_inwards');
+            const nextNumber = countResult[0].total + 1;
+            const newGrn = `GRN-${nextNumber.toString().padStart(3, '0')}`;
+            
+            console.log(`GRN ${grn} already exists, using ${newGrn} instead`);
+            
+            // Use the new GRN
+            const [gateInwardResult] = await connection.execute(
+                'INSERT INTO gate_inwards (grn_number, grn_date, bill_no, bill_date, supplier_id, payment_terms, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [newGrn, grnDate, billNo || null, billDate || null, supplierId, paymentTerms, userId]
             );
-            await updateItemStock(item.itemId, item.qty, 'inward', connection);
-        }
+            const gateInwardId = gateInwardResult.insertId;
 
-        await connection.commit();
-        res.status(201).json({ message: 'Gate Inward entry added successfully and stock updated!', id: gateInwardId });
+            // Insert items
+            for (const item of items) {
+                await connection.execute(
+                    'INSERT INTO gate_inward_items (gate_inward_id, item_id, unit_rate, uom, quantity, amount, remark) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [gateInwardId, item.itemId, item.unitRate, item.uom, item.qty, item.amount, item.remark]
+                );
+                await updateItemStock(item.itemId, item.qty, 'inward', connection);
+            }
+
+            await connection.commit();
+            res.status(201).json({ 
+                message: 'Gate Inward entry added successfully with auto-corrected GRN and stock updated!', 
+                id: gateInwardId,
+                actualGrn: newGrn
+            });
+        } else {
+            // Original GRN is available, proceed normally
+            const [gateInwardResult] = await connection.execute(
+                'INSERT INTO gate_inwards (grn_number, grn_date, bill_no, bill_date, supplier_id, payment_terms, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [grn, grnDate, billNo || null, billDate || null, supplierId, paymentTerms, userId]
+            );
+            const gateInwardId = gateInwardResult.insertId;
+
+            // Insert items
+            for (const item of items) {
+                await connection.execute(
+                    'INSERT INTO gate_inward_items (gate_inward_id, item_id, unit_rate, uom, quantity, amount, remark) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [gateInwardId, item.itemId, item.unitRate, item.uom, item.qty, item.amount, item.remark]
+                );
+                await updateItemStock(item.itemId, item.qty, 'inward', connection);
+            }
+
+            await connection.commit();
+            res.status(201).json({ message: 'Gate Inward entry added successfully and stock updated!', id: gateInwardId });
+        }
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Error adding gate inward entry:', err);
         res.status(500).json({ message: 'Error adding gate inward entry', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// PUT endpoint for updating Gate Inward entries
+app.put('/api/gate-inwards/:id', async (req, res) => {
+    const { id } = req.params;
+    const { grn, grnDate, billNo, billDate, supplierId, paymentTerms, items, userId } = req.body;
+    
+    if (!grn || !grnDate || !supplierId || !items || items.length === 0) {
+        return res.status(400).json({ message: 'GRN number, GRN date, supplier, and items are required for Gate Inward update.' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // First, get the existing entry to reverse its stock effects
+        const [existingEntry] = await connection.execute(
+            'SELECT * FROM gate_inwards WHERE id = ?',
+            [id]
+        );
+        
+        if (existingEntry.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Gate Inward entry not found.' });
+        }
+
+        // Get existing items and reverse their stock impact
+        const [existingItems] = await connection.execute(
+            'SELECT * FROM gate_inward_items WHERE gate_inward_id = ?',
+            [id]
+        );
+        
+        for (const item of existingItems) {
+            // Reverse the previous inward effect (reduce from main stock)
+            await updateItemStock(item.item_id, item.quantity, 'outward', connection);
+        }
+
+        // Delete existing items
+        await connection.execute('DELETE FROM gate_inward_items WHERE gate_inward_id = ?', [id]);
+
+        // Update the main record
+        await connection.execute(
+            'UPDATE gate_inwards SET grn_number = ?, grn_date = ?, bill_no = ?, bill_date = ?, supplier_id = ?, payment_terms = ?, updated_at = NOW() WHERE id = ?',
+            [grn, grnDate, billNo || null, billDate || null, supplierId, paymentTerms, id]
+        );
+
+        // Insert new items and update stocks
+        for (const item of items) {
+            await connection.execute(
+                'INSERT INTO gate_inward_items (gate_inward_id, item_id, unit_rate, uom, quantity, amount, remark) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [id, item.itemId, item.unitRate, item.uom, item.qty, item.amount, item.remark]
+            );
+            
+            // Add to main stock
+            await updateItemStock(item.itemId, item.qty, 'inward', connection);
+        }
+
+        await connection.commit();
+        res.json({ message: 'Gate Inward entry updated successfully! Stock adjusted accordingly.' });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error updating gate inward entry:', err);
+        res.status(500).json({ message: 'Error updating gate inward entry', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// DELETE endpoint for Gate Inward entries
+app.delete('/api/gate-inwards/:id', async (req, res) => {
+    const { id } = req.params;
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Get the entry to reverse its stock effects
+        const [entry] = await connection.execute(
+            'SELECT * FROM gate_inwards WHERE id = ?',
+            [id]
+        );
+        
+        if (entry.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Gate Inward entry not found.' });
+        }
+
+        // Get items and reverse their stock impact
+        const [items] = await connection.execute(
+            'SELECT * FROM gate_inward_items WHERE gate_inward_id = ?',
+            [id]
+        );
+        
+        for (const item of items) {
+            // Reverse the inward effect (reduce from main stock)
+            await updateItemStock(item.item_id, item.quantity, 'outward', connection);
+        }
+
+        // Delete related records
+        await connection.execute('DELETE FROM gate_inward_items WHERE gate_inward_id = ?', [id]);
+        
+        // Delete main record
+        await connection.execute('DELETE FROM gate_inwards WHERE id = ?', [id]);
+
+        await connection.commit();
+        res.json({ message: 'Gate Inward entry deleted successfully! Stock levels restored.' });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error deleting gate inward entry:', err);
+        res.status(500).json({ message: 'Error deleting gate inward entry', error: err.message });
     } finally {
         if (connection) connection.release();
     }
@@ -558,19 +712,38 @@ app.post('/api/issue-notes-internal', async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
+        // Check if Issue Number already exists (safety check)
+        const [existingIssue] = await connection.execute(
+            'SELECT id FROM issue_notes_internal WHERE issue_no = ?',
+            [issueNo]
+        );
+        
+        let finalIssueNo = issueNo;
+        
+        if (existingIssue.length > 0) {
+            // If issue number exists, generate a new one automatically
+            const [countResult] = await connection.execute('SELECT COUNT(*) as total FROM issue_notes_internal');
+            const nextNumber = countResult[0].total + 1;
+            finalIssueNo = `ISS-${nextNumber.toString().padStart(3, '0')}`;
+            console.log(`Issue number ${issueNo} already exists, using ${finalIssueNo} instead`);
+        }
+
         // Check stock levels before proceeding
         for (const item of items) {
             const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
             if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
                 await connection.rollback();
-                return res.status(400).json({ message: `Not enough stock for item ID ${item.itemId}.` });
+                const itemName = stockRows.length > 0 ? 'Item' : 'Unknown item';
+                return res.status(400).json({ 
+                    message: `Not enough stock for ${itemName} ID ${item.itemId}. Available: ${stockRows[0]?.stock || 0}, Required: ${item.qty}` 
+                });
             }
         }
 
         // Insert Issue Note header
         const [issueResult] = await connection.execute(
             'INSERT INTO issue_notes_internal (department, issue_no, issue_date, issued_by, user_id) VALUES (?, ?, ?, ?, ?)',
-            [department, issueNo, issueDate, issuedBy, userId]
+            [department, finalIssueNo, issueDate, issuedBy, userId]
         );
         const issueNoteId = issueResult.insertId;
 
@@ -589,7 +762,11 @@ app.post('/api/issue-notes-internal', async (req, res) => {
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Issue Note Internal entry added successfully! Stock moved to production floor.', id: issueNoteId });
+        res.status(201).json({ 
+            message: 'Issue Note Internal entry added successfully! Stock moved to production floor.', 
+            id: issueNoteId,
+            actualIssueNo: finalIssueNo 
+        });
     } catch (err) {
         if (connection) await connection.rollback();
         console.error('Error adding issue note internal entry:', err);
@@ -599,44 +776,74 @@ app.post('/api/issue-notes-internal', async (req, res) => {
     }
 });
 
-// Inward - Internal (Finished Goods)
-app.get('/api/inward-internals', async (req, res) => {
+// Generate auto-increment issue number for issue notes internal
+app.get('/api/issue-notes-internal/generate-issue-number', async (req, res) => {
     try {
-        const [rows] = await pool.execute('SELECT * FROM inward_internals ORDER BY created_at DESC');
-        for (let i = 0; i < rows.length; i++) {
-            const [finishedGoods] = await pool.execute(`
-                SELECT iifg.*, it.full_description AS item_description, it.item_name,
-                       ic.category_name, s.subcategory_name
-                FROM inward_internal_finished_goods iifg
-                JOIN items it ON iifg.item_id = it.id
-                LEFT JOIN item_categories ic ON it.category_id = ic.id
-                LEFT JOIN subcategories s ON it.subcategory_id = s.id
-                WHERE iifg.inward_internal_id = ?
-            `, [rows[i].id]);
-            rows[i].finishGoods = finishedGoods;
-
-            const [materialsUsed] = await pool.execute(`
-                SELECT iimu.*, it.full_description AS item_description, it.item_name,
-                       ic.category_name, s.subcategory_name
-                FROM inward_internal_materials_used iimu
-                JOIN items it ON iimu.item_id = it.id
-                LEFT JOIN item_categories ic ON it.category_id = ic.id
-                LEFT JOIN subcategories s ON it.subcategory_id = s.id
-                WHERE iimu.inward_internal_id = ?
-            `, [rows[i].id]);
-            rows[i].materialUsed = materialsUsed;
+        // Get the latest issue number
+        const [rows] = await pool.execute(
+            'SELECT issue_no FROM issue_notes_internal ORDER BY id DESC LIMIT 1'
+        );
+        
+        let nextNumber = 1;
+        let prefix = 'ISS-';
+        
+        if (rows.length > 0) {
+            const lastIssueNo = rows[0].issue_no;
+            // Extract number from issue like "ISS-001"
+            const match = lastIssueNo.match(/ISS-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+            }
         }
-        res.json(rows);
+        
+        // Generate new issue number with zero padding
+        const newIssueNo = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        
+        res.json({ issueNumber: newIssueNo });
     } catch (err) {
-        console.error('Error fetching inward internals:', err);
-        res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
+        console.error('Error generating issue number:', err);
+        res.status(500).json({ message: 'Error generating issue number', error: err.message });
     }
 });
 
-app.post('/api/inward-internals', async (req, res) => {
-    const { receiptNo, receivedDate, receivedBy, department, finishGoods, materialUsed, userId } = req.body;
-    if (!receiptNo || !receivedDate || !receivedBy || !department || (!finishGoods && !materialUsed)) {
-        return res.status(400).json({ message: 'Required fields are missing for Inward Internal.' });
+// Update the existing issue-notes-internal GET endpoint to support pagination
+app.get('/api/issue-notes-internal', async (req, res) => {
+    const { limit = 50, orderBy = 'created_at', order = 'DESC' } = req.query;
+    
+    try {
+        const [rows] = await pool.execute(
+            `SELECT * FROM issue_notes_internal 
+             ORDER BY ${orderBy} ${order} 
+             LIMIT ?`,
+            [parseInt(limit)]
+        );
+        
+        // Fetch associated items for each issue note
+        for (let i = 0; i < rows.length; i++) {
+            const [items] = await pool.execute(`
+                SELECT inii.*, it.full_description AS item_description, it.item_name,
+                       ic.category_name, s.subcategory_name
+                FROM issue_note_internal_items inii
+                JOIN items it ON inii.item_id = it.id
+                LEFT JOIN item_categories ic ON it.category_id = ic.id
+                LEFT JOIN subcategories s ON it.subcategory_id = s.id
+                WHERE inii.issue_note_id = ?
+            `, [rows[i].id]);
+            rows[i].items = items;
+        }
+        
+        res.json(rows);
+    } catch (err) {
+        console.error('Error fetching issue notes internal:', err);
+        res.status(500).json({ message: 'Error fetching issue notes internal', error: err.message });
+    }
+});
+
+// Update the existing POST endpoint to handle duplicate issue numbers
+app.post('/api/issue-notes-internal', async (req, res) => {
+    const { department, issueNo, issueDate, issuedBy, items, userId } = req.body;
+    if (!department || !issueNo || !issueDate || !issuedBy || !items || items.length === 0) {
+        return res.status(400).json({ message: 'Required fields are missing for Issue Note Internal.' });
     }
 
     let connection;
@@ -644,145 +851,77 @@ app.post('/api/inward-internals', async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // Check production floor stock for materials used before proceeding
-        if (materialUsed && materialUsed.length > 0) {
-            for (const item of materialUsed) {
-                const [stockRows] = await connection.execute(
-                    'SELECT quantity FROM production_floor_stocks WHERE item_id = ?', 
-                    [item.itemId]
-                );
-                if (stockRows.length === 0 || stockRows[0].quantity < item.qty) {
-                    await connection.rollback();
-                    return res.status(400).json({ message: `Not enough production floor stock for material used item ID ${item.itemId}.` });
-                }
-            }
-        }
-
-        // Insert Inward Internal header
-        const [inwardInternalResult] = await connection.execute(
-            'INSERT INTO inward_internals (receipt_no, received_date, received_by, department, user_id) VALUES (?, ?, ?, ?, ?)',
-            [receiptNo, receivedDate, receivedBy, department, userId]
+        // Check if Issue Number already exists (safety check)
+        const [existingIssue] = await connection.execute(
+            'SELECT id FROM issue_notes_internal WHERE issue_no = ?',
+            [issueNo]
         );
-        const inwardInternalId = inwardInternalResult.insertId;
+        
+        let finalIssueNo = issueNo;
+        
+        if (existingIssue.length > 0) {
+            // If issue number exists, generate a new one automatically
+            const [countResult] = await connection.execute('SELECT COUNT(*) as total FROM issue_notes_internal');
+            const nextNumber = countResult[0].total + 1;
+            finalIssueNo = `ISS-${nextNumber.toString().padStart(3, '0')}`;
+            console.log(`Issue number ${issueNo} already exists, using ${finalIssueNo} instead`);
+        }
 
-        // Insert Finished Goods and update main stock (inward)
-        if (finishGoods && finishGoods.length > 0) {
-            for (const fg of finishGoods) {
-                await connection.execute(
-                    'INSERT INTO inward_internal_finished_goods (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
-                    [inwardInternalId, fg.itemId, fg.unitRate, fg.uom, fg.qty, fg.remark]
-                );
-                await updateItemStock(fg.itemId, fg.qty, 'inward', connection);
+        // Check stock levels before proceeding
+        for (const item of items) {
+            const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
+            if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
+                await connection.rollback();
+                const itemName = stockRows.length > 0 ? 'Item' : 'Unknown item';
+                return res.status(400).json({ 
+                    message: `Not enough stock for ${itemName} ID ${item.itemId}. Available: ${stockRows[0]?.stock || 0}, Required: ${item.qty}` 
+                });
             }
         }
 
-        // Insert Materials Used and update production floor stock (outward)
-        if (materialUsed && materialUsed.length > 0) {
-            for (const mu of materialUsed) {
-                await connection.execute(
-                    'INSERT INTO inward_internal_materials_used (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
-                    [inwardInternalId, mu.itemId, mu.unitRate, mu.uom, mu.qty, mu.remark]
-                );
-                
-                // Reduce from production floor stock instead of main stock
-                await updateProductionFloorStock(mu.itemId, mu.qty, 'outward', connection);
-            }
+        // Insert Issue Note header
+        const [issueResult] = await connection.execute(
+            'INSERT INTO issue_notes_internal (department, issue_no, issue_date, issued_by, user_id) VALUES (?, ?, ?, ?, ?)',
+            [department, finalIssueNo, issueDate, issuedBy, userId]
+        );
+        const issueNoteId = issueResult.insertId;
+
+        // Insert Issue Note items, update main stock (outward), and update production floor stock (inward)
+        for (const item of items) {
+            await connection.execute(
+                'INSERT INTO issue_note_internal_items (issue_note_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                [issueNoteId, item.itemId, item.unitRate, item.uom, item.qty, item.remark]
+            );
+            
+            // Reduce from main stock
+            await updateItemStock(item.itemId, item.qty, 'outward', connection);
+            
+            // Add to production floor stock
+            await updateProductionFloorStock(item.itemId, item.qty, 'inward', connection);
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Inward Internal entry added successfully! Production completed and stocks updated.', id: inwardInternalId });
+        res.status(201).json({ 
+            message: 'Issue Note Internal entry added successfully! Stock moved to production floor.', 
+            id: issueNoteId,
+            actualIssueNo: finalIssueNo 
+        });
     } catch (err) {
         if (connection) await connection.rollback();
-        console.error('Error adding inward internal entry:', err);
-        res.status(500).json({ message: 'Error adding inward internal entry', error: err.message });
+        console.error('Error adding issue note internal entry:', err);
+        res.status(500).json({ message: 'Error adding issue note internal entry', error: err.message });
     } finally {
         if (connection) connection.release();
     }
 });
 
-// Generate auto-increment receipt number for inward internals
-app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
-    try {
-        // Get the latest receipt number
-        const [rows] = await pool.execute(
-            'SELECT receipt_no FROM inward_internals ORDER BY id DESC LIMIT 1'
-        );
-        
-        let nextNumber = 1;
-        let prefix = 'INT-REC-';
-        
-        if (rows.length > 0) {
-            const lastReceiptNo = rows[0].receipt_no;
-            // Extract number from receipt like "INT-REC-001"
-            const match = lastReceiptNo.match(/INT-REC-(\d+)/);
-            if (match) {
-                nextNumber = parseInt(match[1]) + 1;
-            }
-        }
-        
-        // Generate new receipt number with zero padding
-        const newReceiptNo = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
-        
-        res.json({ receiptNumber: newReceiptNo });
-    } catch (err) {
-        console.error('Error generating receipt number:', err);
-        res.status(500).json({ message: 'Error generating receipt number', error: err.message });
-    }
-});
-
-// Get recent inward internal entries with limit and ordering
-app.get('/api/inward-internals', async (req, res) => {
-    const { limit = 50, orderBy = 'created_at', order = 'DESC' } = req.query;
-    
-    try {
-        const [rows] = await pool.execute(
-            `SELECT * FROM inward_internals 
-             ORDER BY ${orderBy} ${order} 
-             LIMIT ?`,
-            [parseInt(limit)]
-        );
-        
-        // Fetch associated items for each entry
-        for (let i = 0; i < rows.length; i++) {
-            // Get finished goods
-            const [finishedGoods] = await pool.execute(`
-                SELECT iifg.*, it.full_description AS item_description, it.item_name,
-                       ic.category_name, s.subcategory_name
-                FROM inward_internal_finished_goods iifg
-                JOIN items it ON iifg.item_id = it.id
-                LEFT JOIN item_categories ic ON it.category_id = ic.id
-                LEFT JOIN subcategories s ON it.subcategory_id = s.id
-                WHERE iifg.inward_internal_id = ?
-            `, [rows[i].id]);
-            rows[i].finishGoods = finishedGoods;
-
-            // Get materials used
-            const [materialsUsed] = await pool.execute(`
-                SELECT iimu.*, it.full_description AS item_description, it.item_name,
-                       ic.category_name, s.subcategory_name
-                FROM inward_internal_materials_used iimu
-                JOIN items it ON iimu.item_id = it.id
-                LEFT JOIN item_categories ic ON it.category_id = ic.id
-                LEFT JOIN subcategories s ON it.subcategory_id = s.id
-                WHERE iimu.inward_internal_id = ?
-            `, [rows[i].id]);
-            rows[i].materialUsed = materialsUsed;
-        }
-        
-        res.json(rows);
-    } catch (err) {
-        console.error('Error fetching inward internals:', err);
-        res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
-    }
-});
-
-// Update existing inward internal entry
-app.put('/api/inward-internals/:id', async (req, res) => {
+// Add UPDATE endpoint for issue notes internal
+app.put('/api/issue-notes-internal/:id', async (req, res) => {
     const { id } = req.params;
-    const { receiptNo, receivedDate, receivedBy, department, finishGoods, materialUsed, userId } = req.body;
+    const { department, issueNo, issueDate, issuedBy, items, userId } = req.body;
     
-    if (!receiptNo || !receivedDate || !receivedBy || !department) {
-        return res.status(400).json({ message: 'Required fields are missing for Inward Internal update.' });
+    if (!department || !issueNo || !issueDate || !issuedBy || !items || items.length === 0) {
+        return res.status(400).json({ message: 'Required fields are missing for Issue Note Internal update.' });
     }
 
     let connection;
@@ -792,98 +931,75 @@ app.put('/api/inward-internals/:id', async (req, res) => {
 
         // First, get the existing entry to reverse its stock effects
         const [existingEntry] = await connection.execute(
-            'SELECT * FROM inward_internals WHERE id = ?',
+            'SELECT * FROM issue_notes_internal WHERE id = ?',
             [id]
         );
         
         if (existingEntry.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ message: 'Inward Internal entry not found.' });
+            return res.status(404).json({ message: 'Issue Note Internal entry not found.' });
         }
 
-        // Get existing finished goods and reverse their stock impact
-        const [existingFinishedGoods] = await connection.execute(
-            'SELECT * FROM inward_internal_finished_goods WHERE inward_internal_id = ?',
+        // Get existing items and reverse their stock impact
+        const [existingItems] = await connection.execute(
+            'SELECT * FROM issue_note_internal_items WHERE issue_note_id = ?',
             [id]
         );
         
-        for (const fg of existingFinishedGoods) {
-            // Reverse the previous inward effect (reduce main stock)
-            await updateItemStock(fg.item_id, fg.quantity, 'outward', connection);
+        for (const item of existingItems) {
+            // Reverse the previous outward effect (add back to main stock)
+            await updateItemStock(item.item_id, item.quantity, 'inward', connection);
+            // Reverse the previous inward effect (reduce from production floor stock)
+            await updateProductionFloorStock(item.item_id, item.quantity, 'outward', connection);
         }
 
-        // Get existing materials used and reverse their stock impact
-        const [existingMaterialsUsed] = await connection.execute(
-            'SELECT * FROM inward_internal_materials_used WHERE inward_internal_id = ?',
-            [id]
-        );
-        
-        for (const mu of existingMaterialsUsed) {
-            // Reverse the previous outward effect (add back to production floor stock)
-            await updateProductionFloorStock(mu.item_id, mu.quantity, 'inward', connection);
-        }
-
-        // Delete existing related records
-        await connection.execute('DELETE FROM inward_internal_finished_goods WHERE inward_internal_id = ?', [id]);
-        await connection.execute('DELETE FROM inward_internal_materials_used WHERE inward_internal_id = ?', [id]);
+        // Delete existing items
+        await connection.execute('DELETE FROM issue_note_internal_items WHERE issue_note_id = ?', [id]);
 
         // Update the main record
         await connection.execute(
-            'UPDATE inward_internals SET receipt_no = ?, received_date = ?, received_by = ?, department = ?, updated_at = NOW() WHERE id = ?',
-            [receiptNo, receivedDate, receivedBy, department, id]
+            'UPDATE issue_notes_internal SET department = ?, issue_no = ?, issue_date = ?, issued_by = ?, updated_at = NOW() WHERE id = ?',
+            [department, issueNo, issueDate, issuedBy, id]
         );
 
-        // Check production floor stock for new materials used
-        if (materialUsed && materialUsed.length > 0) {
-            for (const item of materialUsed) {
-                const [stockRows] = await connection.execute(
-                    'SELECT quantity FROM production_floor_stocks WHERE item_id = ?',
-                    [item.itemId]
-                );
-                if (stockRows.length === 0 || stockRows[0].quantity < item.qty) {
-                    await connection.rollback();
-                    return res.status(400).json({ 
-                        message: `Not enough production floor stock for material used item ID ${item.itemId}.` 
-                    });
-                }
+        // Check stock levels for new items
+        for (const item of items) {
+            const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
+            if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Not enough stock for item ID ${item.itemId}. Available: ${stockRows[0]?.stock || 0}, Required: ${item.qty}` 
+                });
             }
         }
 
-        // Insert new finished goods and update main stock
-        if (finishGoods && finishGoods.length > 0) {
-            for (const fg of finishGoods) {
-                await connection.execute(
-                    'INSERT INTO inward_internal_finished_goods (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
-                    [id, fg.itemId, fg.unitRate, fg.uom, fg.qty, fg.remark]
-                );
-                await updateItemStock(fg.itemId, fg.qty, 'inward', connection);
-            }
-        }
-
-        // Insert new materials used and update production floor stock
-        if (materialUsed && materialUsed.length > 0) {
-            for (const mu of materialUsed) {
-                await connection.execute(
-                    'INSERT INTO inward_internal_materials_used (inward_internal_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
-                    [id, mu.itemId, mu.unitRate, mu.uom, mu.qty, mu.remark]
-                );
-                await updateProductionFloorStock(mu.itemId, mu.qty, 'outward', connection);
-            }
+        // Insert new items and update stocks
+        for (const item of items) {
+            await connection.execute(
+                'INSERT INTO issue_note_internal_items (issue_note_id, item_id, unit_rate, uom, quantity, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                [id, item.itemId, item.unitRate, item.uom, item.qty, item.remark]
+            );
+            
+            // Reduce from main stock
+            await updateItemStock(item.itemId, item.qty, 'outward', connection);
+            
+            // Add to production floor stock
+            await updateProductionFloorStock(item.itemId, item.qty, 'inward', connection);
         }
 
         await connection.commit();
-        res.json({ message: 'Inward Internal entry updated successfully! Stocks adjusted accordingly.' });
+        res.json({ message: 'Issue Note Internal entry updated successfully! Stocks adjusted accordingly.' });
     } catch (err) {
         if (connection) await connection.rollback();
-        console.error('Error updating inward internal entry:', err);
-        res.status(500).json({ message: 'Error updating inward internal entry', error: err.message });
+        console.error('Error updating issue note internal entry:', err);
+        res.status(500).json({ message: 'Error updating issue note internal entry', error: err.message });
     } finally {
         if (connection) connection.release();
     }
 });
 
 // Delete inward internal entry
-app.delete('/api/inward-internals/:id', async (req, res) => {
+app.delete('/api/issue-notes-internal/:id', async (req, res) => {
     const { id } = req.params;
 
     let connection;
@@ -893,7 +1009,7 @@ app.delete('/api/inward-internals/:id', async (req, res) => {
 
         // Get the entry to reverse its stock effects
         const [entry] = await connection.execute(
-            'SELECT * FROM inward_internals WHERE id = ?',
+            'SELECT * FROM issue_notes_internal WHERE id = ?',
             [id]
         );
         
@@ -939,6 +1055,489 @@ app.delete('/api/inward-internals/:id', async (req, res) => {
         res.status(500).json({ message: 'Error deleting inward internal entry', error: err.message });
     } finally {
         if (connection) connection.release();
+    }
+});
+
+// Generate item code based on category and subcategory
+app.get('/api/items/generate-code/:categoryId/:subcategoryId', async (req, res) => {
+    const { categoryId, subcategoryId } = req.params;
+    
+    try {
+        // Get category and subcategory details
+        const [categoryResult] = await pool.execute(
+            'SELECT category_name FROM item_categories WHERE id = ?',
+            [categoryId]
+        );
+        
+        const [subcategoryResult] = await pool.execute(
+            'SELECT subcategory_name FROM subcategories WHERE id = ?',
+            [subcategoryId]
+        );
+        
+        if (categoryResult.length === 0 || subcategoryResult.length === 0) {
+            return res.status(404).json({ message: 'Category or subcategory not found' });
+        }
+        
+        const categoryName = categoryResult[0].category_name;
+        const subcategoryName = subcategoryResult[0].subcategory_name;
+        
+        // Create category prefix (first 2 letters of category)
+        const categoryPrefix = categoryName.substring(0, 2).toUpperCase();
+        
+        // Create subcategory prefix (first 2 letters of subcategory)
+        const subcategoryPrefix = subcategoryName.substring(0, 2).toUpperCase();
+        
+        // Count existing items with same category and subcategory
+        const [countResult] = await pool.execute(
+            'SELECT COUNT(*) as count FROM items WHERE category_id = ? AND subcategory_id = ?',
+            [categoryId, subcategoryId]
+        );
+        
+        const nextSequence = countResult[0].count + 1;
+        
+        // Generate item code: PREFIX-SUBPREFIX-001
+        const itemCode = `${categoryPrefix}${subcategoryPrefix}-${nextSequence.toString().padStart(3, '0')}`;
+        
+        res.json({ itemCode });
+    } catch (error) {
+        console.error('Error generating item code:', error);
+        res.status(500).json({ message: 'Error generating item code', error: error.message });
+    }
+});
+
+// Generate auto-increment GRN number for gate inwards
+app.get('/api/gate-inwards/generate-grn-number', async (req, res) => {
+    try {
+        // Get the latest GRN number
+        const [rows] = await pool.execute(
+            'SELECT grn_number FROM gate_inwards ORDER BY id DESC LIMIT 1'
+        );
+        
+        let nextNumber = 1;
+        let prefix = 'GRN-';
+        
+        if (rows.length > 0) {
+            const lastGrnNumber = rows[0].grn_number;
+            // Extract number from GRN like "GRN-001"
+            const match = lastGrnNumber.match(/GRN-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+            }
+        }
+        
+        // Generate new GRN number with zero padding
+        const newGrnNumber = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        
+        res.json({ grnNumber: newGrnNumber });
+    } catch (err) {
+        console.error('Error generating GRN number:', err);
+        res.status(500).json({ message: 'Error generating GRN number', error: err.message });
+    }
+});
+
+// Outward Challans
+// Update the app.get('/api/outward-challans') route with this fixed version
+// Fix the outward challans endpoint to properly handle parameters
+app.get('/api/outward-challans', async (req, res) => {
+    const { limit = 5 } = req.query;
+    
+    try {
+        // Ensure limit is a valid integer
+        const limitValue = parseInt(limit) || 5;
+        
+        // Use question mark placeholder for the LIMIT clause
+        const [rows] = await pool.query(`
+            SELECT oc.*, p.party_name
+            FROM outward_challans oc
+            JOIN parties p ON oc.party_id = p.id
+            ORDER BY oc.created_at DESC
+            LIMIT ?
+        `, [limitValue]);  // Pass limitValue as a parameter
+        
+        // Fetch associated items for each outward challan
+        for (let i = 0; i < rows.length; i++) {
+            const [items] = await pool.query(`
+                SELECT oci.*, it.full_description AS item_description, it.item_name,
+                       ic.category_name, s.subcategory_name
+                FROM outward_challan_items oci
+                JOIN items it ON oci.item_id = it.id
+                LEFT JOIN item_categories ic ON it.category_id = ic.id
+                LEFT JOIN subcategories s ON it.subcategory_id = s.id
+                WHERE oci.outward_challan_id = ?
+            `, [rows[i].id]);
+            rows[i].items = items;
+        }
+        
+        res.json(rows);
+    } catch (err) {
+        console.error('Error fetching outward challans:', err);
+        res.status(500).json({ message: 'Error fetching outward challans', error: err.message });
+    }
+});
+
+app.post('/api/outward-challans', async (req, res) => {
+    const { partyId, challanNo, challanDate, transport, lrNo, remark, items, userId } = req.body;
+    
+    if (!partyId || !challanNo || !challanDate || !items || items.length === 0) {
+        return res.status(400).json({ message: 'Party, challan number, challan date, and items are required for Outward Challan.' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Check stock levels before proceeding
+        for (const item of items) {
+            const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
+            if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
+                await connection.rollback();
+                const itemName = stockRows.length > 0 ? 'Item' : 'Unknown item';
+                return res.status(400).json({ 
+                    message: `Not enough stock for ${itemName} ID ${item.itemId}. Available: ${stockRows[0]?.stock || 0}, Required: ${item.qty}` 
+                });
+            }
+        }
+
+        // Insert Outward Challan header
+        const [challanResult] = await connection.execute(
+            'INSERT INTO outward_challans (party_id, challan_no, challan_date, transport, lr_no, remark, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [partyId, challanNo, challanDate, transport, lrNo, remark, userId]
+        );
+        const challanId = challanResult.insertId;
+
+        // Insert Outward Challan items and update stock (outward)
+        for (const item of items) {
+            await connection.execute(
+                'INSERT INTO outward_challan_items (outward_challan_id, item_id, value_of_goods_uom, quantity, remark) VALUES (?, ?, ?, ?, ?)',
+                [challanId, item.itemId, item.valueOfGoodsUom, item.qty, item.remark]
+            );
+            
+            // Reduce from main stock
+            await updateItemStock(item.itemId, item.qty, 'outward', connection);
+        }
+
+        await connection.commit();
+        res.status(201).json({ 
+            message: 'Outward Challan created successfully! Items dispatched and stock updated.', 
+            id: challanId
+        });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error adding outward challan:', err);
+        res.status(500).json({ message: 'Error adding outward challan', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.put('/api/outward-challans/:id', async (req, res) => {
+    const { id } = req.params;
+    const { partyId, challanNo, challanDate, transport, lrNo, remark, items, userId } = req.body;
+    
+    if (!partyId || !challanNo || !challanDate || !items || items.length === 0) {
+        return res.status(400).json({ message: 'Required fields are missing for Outward Challan update.' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Get existing items and reverse their stock impact
+        const [existingItems] = await connection.execute(
+            'SELECT * FROM outward_challan_items WHERE outward_challan_id = ?',
+            [id]
+        );
+        
+        for (const item of existingItems) {
+            // Reverse the previous outward effect (add back to stock)
+            await updateItemStock(item.item_id, item.quantity, 'inward', connection);
+        }
+
+        // Delete existing items
+        await connection.execute('DELETE FROM outward_challan_items WHERE outward_challan_id = ?', [id]);
+
+        // Update the main record
+        await connection.execute(
+            'UPDATE outward_challans SET party_id = ?, challan_no = ?, challan_date = ?, transport = ?, lr_no = ?, remark = ?, updated_at = NOW() WHERE id = ?',
+            [partyId, challanNo, challanDate, transport, lrNo, remark, id]
+        );
+
+        // Check stock levels for new items
+        for (const item of items) {
+            const [stockRows] = await connection.execute('SELECT stock FROM items WHERE id = ?', [item.itemId]);
+            if (stockRows.length === 0 || stockRows[0].stock < item.qty) {
+                await connection.rollback();
+                return res.status(400).json({ 
+                    message: `Not enough stock for item ID ${item.itemId}. Available: ${stockRows[0]?.stock || 0}, Required: ${item.qty}` 
+                });
+            }
+        }
+
+        // Insert new items and update stocks
+        for (const item of items) {
+            await connection.execute(
+                'INSERT INTO outward_challan_items (outward_challan_id, item_id, value_of_goods_uom, quantity, remark) VALUES (?, ?, ?, ?, ?)',
+                [id, item.itemId, item.valueOfGoodsUom, item.qty, item.remark]
+            );
+            
+            // Reduce from stock
+            await updateItemStock(item.itemId, item.qty, 'outward', connection);
+        }
+
+        await connection.commit();
+        res.json({ message: 'Outward Challan updated successfully! Stock adjusted accordingly.' });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error updating outward challan:', err);
+        res.status(500).json({ message: 'Error updating outward challan', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+app.delete('/api/outward-challans/:id', async (req, res) => {
+    const { id } = req.params;
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Get items and reverse their stock impact
+        const [items] = await connection.execute(
+            'SELECT * FROM outward_challan_items WHERE outward_challan_id = ?',
+            [id]
+        );
+        
+        for (const item of items) {
+            // Reverse the outward effect (add back to stock)
+            await updateItemStock(item.item_id, item.quantity, 'inward', connection);
+        }
+
+        // Delete related records
+        await connection.execute('DELETE FROM outward_challan_items WHERE outward_challan_id = ?', [id]);
+        
+        // Delete main record
+        await connection.execute('DELETE FROM outward_challans WHERE id = ?', [id]);
+
+        await connection.commit();
+        res.json({ message: 'Outward Challan deleted successfully! Stock levels restored.' });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error deleting outward challan:', err);
+        res.status(500).json({ message: 'Error deleting outward challan', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Fix the PUT /api/inward-internals/:id endpoint in server.js
+app.put('/api/inward-internals/:id', async (req, res) => {
+    const { id } = req.params;
+    const { itemId, qty, unitRate, remark, userId } = req.body;
+
+    if (!itemId || !qty || qty <= 0) {
+        return res.status(400).json({ message: 'Item ID and quantity are required for Inward Internal update.' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Get the current record to calculate differences
+        const [currentRecord] = await connection.execute(
+            'SELECT item_id, quantity FROM inward_internals WHERE id = ?',
+            [id]
+        );
+
+        if (currentRecord.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Inward Internal record not found.' });
+        }
+
+        const oldItemId = currentRecord[0].item_id;
+        const oldQuantity = parseFloat(currentRecord[0].quantity);
+        const newQuantity = parseFloat(qty);
+
+        // If item changed, revert old item's stock and update new item's stock
+        if (oldItemId !== parseInt(itemId)) {
+            // Revert old item's stock (subtract from both tables)
+            await connection.execute(
+                'UPDATE items SET stock = stock - ? WHERE id = ?',
+                [oldQuantity, oldItemId]
+            );
+            await connection.execute(
+                'UPDATE production_floor_stocks SET quantity = quantity - ? WHERE item_id = ?',
+                [oldQuantity, oldItemId]
+            );
+
+            // Add to new item's stock
+            await connection.execute(
+                'UPDATE items SET stock = stock + ? WHERE id = ?',
+                [newQuantity, itemId]
+            );
+            await connection.execute(
+                'UPDATE production_floor_stocks SET quantity = quantity + ? WHERE item_id = ?',
+                [newQuantity, itemId]
+            );
+        } else {
+            // Same item, just update the quantity difference
+            const quantityDifference = newQuantity - oldQuantity;
+            
+            await connection.execute(
+                'UPDATE items SET stock = stock + ? WHERE id = ?',
+                [quantityDifference, itemId]
+            );
+            await connection.execute(
+                'UPDATE production_floor_stocks SET quantity = quantity + ? WHERE item_id = ?',
+                [quantityDifference, itemId]
+            );
+        }
+
+        // Update the inward internal record
+        await connection.execute(`
+            UPDATE inward_internals 
+            SET item_id = ?, quantity = ?, unit_rate = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `, [itemId, newQuantity, unitRate || 0, remark || '', id]);
+
+        await connection.commit();
+        res.json({ message: 'Inward Internal updated successfully!', id });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error updating inward internal:', err);
+        res.status(500).json({ message: 'Error updating inward internal', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Replace the existing GET endpoint for inward-internals with this corrected version
+app.get('/api/inward-internals', async (req, res) => {
+    const { limit = 5 } = req.query;
+    
+    try {
+        // Make sure limit is a valid number
+        const limitValue = Math.max(1, Math.min(parseInt(limit) || 5, 100));
+        
+        const [rows] = await pool.execute(`
+            SELECT ii.*, i.full_description AS item_description, 
+                   COALESCE(pfs.uom, 'PC') AS uom,
+                   i.item_code,
+                   i.item_name
+            FROM inward_internals ii
+            LEFT JOIN items i ON ii.item_id = i.id
+            LEFT JOIN production_floor_stocks pfs ON ii.item_id = pfs.item_id
+            ORDER BY ii.created_at DESC
+            LIMIT ${limitValue}
+        `);
+        
+        res.json(rows);
+    } catch (err) {
+        console.error('Error fetching inward internals:', err);
+        res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
+    }
+});
+// Replace your current POST endpoint for inward-internals with this updated version
+app.post('/api/inward-internals', async (req, res) => {
+    const { receiptNo, receivedDate, receivedBy, department, finishGoods, materialUsed, userId } = req.body;
+    
+    // Validate required fields
+    if (!finishGoods || finishGoods.length === 0 || !materialUsed || materialUsed.length === 0) {
+        return res.status(400).json({ message: 'Finished goods and materials used are required for Inward Internal.' });
+    }
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Insert the main inward internal record
+        const [result] = await connection.execute(
+            'INSERT INTO inward_internals (receipt_no, received_date, received_by, department, user_id) VALUES (?, ?, ?, ?, ?)',
+            [receiptNo || null, receivedDate, receivedBy, department, userId]
+        );
+
+        const inwardId = result.insertId;
+
+        // Process finished goods (add to inventory)
+        for (const item of finishGoods) {
+            if (!item.itemId || item.qty <= 0) continue;
+            
+            // Insert finished goods entry
+            await connection.execute(
+                'INSERT INTO inward_internal_finished_goods (inward_internal_id, item_id, quantity, uom, unit_rate, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                [inwardId, item.itemId, item.qty, item.uom || 'PC', item.unitRate || 0, item.remark || null]
+            );
+
+            // Update main inventory (increase finished goods stock)
+            await connection.execute(
+                'UPDATE items SET stock = stock + ? WHERE id = ?',
+                [item.qty, item.itemId]
+            );
+        }
+
+        // Process materials used (deduct from production floor)
+        for (const item of materialUsed) {
+            if (!item.itemId || item.qty <= 0) continue;
+            
+            // Insert materials used entry
+            await connection.execute(
+                'INSERT INTO inward_internal_materials_used (inward_internal_id, item_id, quantity, uom, unit_rate, remark) VALUES (?, ?, ?, ?, ?, ?)',
+                [inwardId, item.itemId, item.qty, item.uom || 'PC', item.unitRate || 0, item.remark || null]
+            );
+
+            // Update production floor stock (decrease raw materials)
+            await connection.execute(
+                'UPDATE production_floor_stocks SET quantity = quantity - ? WHERE item_id = ?',
+                [item.qty, item.itemId]
+            );
+        }
+
+        await connection.commit();
+        res.status(201).json({ 
+            message: 'Production entry added successfully! Finished goods added to inventory and materials deducted from production floor.', 
+            id: inwardId 
+        });
+    } catch (err) {
+        if (connection) await connection.rollback();
+        console.error('Error adding inward internal entry:', err);
+        res.status(500).json({ message: 'Error adding inward internal entry', error: err.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Add endpoint to generate receipt number
+app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
+    try {
+        // Get the latest receipt number
+        const [rows] = await pool.execute(
+            'SELECT receipt_no FROM inward_internals WHERE receipt_no IS NOT NULL ORDER BY id DESC LIMIT 1'
+        );
+        
+        let nextNumber = 1;
+        let prefix = 'REC-';
+        
+        if (rows.length > 0 && rows[0].receipt_no) {
+            const lastReceiptNo = rows[0].receipt_no;
+            // Extract number from receipt like "REC-001"
+            const match = lastReceiptNo.match(/REC-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+            }
+        }
+        
+        // Generate new receipt number with zero padding
+        const newReceiptNumber = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        
+        res.json({ receiptNumber: newReceiptNumber });
+    } catch (err) {
+        console.error('Error generating receipt number:', err);
+        res.status(500).json({ message: 'Error generating receipt number', error: err.message });
     }
 });
 

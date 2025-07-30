@@ -4,20 +4,24 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 const AppContext = createContext(null);
 
 // Base URL for your backend API
-// When running within Docker Compose, 'backend' is the service name for the backend container.
-// If running the frontend development server directly (npm start) outside Docker,
-// you would typically set REACT_APP_API_BASE_URL in a .env file or use 'http://localhost:3001/api'.
-const API_BASE_URL = 'http://localhost:3001/api'; // Hardcoded for Docker Compose internal network
+const API_BASE_URL = 'http://localhost:3001/api';
+
+const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
 
 const App = () => {
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [currentPage, setCurrentPage] = useState('dashboard'); // State for navigation
+    const [currentPage, setCurrentPage] = useState('dashboard');
+    const [sidebarOpen, setSidebarOpen] = useState(true); // State for sidebar toggle
 
     useEffect(() => {
-        // Simulate user authentication for now
-        // In a real app, you'd use a proper auth system (e.g., JWT from backend)
-        setUserId(crypto.randomUUID()); // Generate a unique ID for the session
+        setUserId(generateUUID());
         setIsAuthReady(true);
     }, []);
 
@@ -31,62 +35,240 @@ const App = () => {
 
     return (
         <AppContext.Provider value={{ API_BASE_URL, userId }}>
-            <div className="min-h-screen bg-gray-100 font-sans antialiased">
-                {/* Navigation */}
-                <nav className="bg-gradient-to-r from-blue-600 to-blue-800 p-4 shadow-lg rounded-b-lg">
-                    <div className="container mx-auto flex flex-wrap justify-between items-center">
-                        <h1 className="text-3xl font-bold text-white tracking-wide">Flour Mill ERP</h1>
-                        <div className="flex space-x-4 mt-2 md:mt-0">
-                            <NavItem label="Dashboard" page="dashboard" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Party Master" page="partyMaster" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Item Master" page="itemMaster" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Subcategory Manager" page="subcategoryManager" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Stock Control" page="stockControl" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Production Floor" page="productionFloorStock" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Gate Inward" page="gateInward" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Issue Note (Internal)" page="issueNoteInternal" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Inward (Internal)" page="inwardInternal" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Outward Challan" page="outwardChallan" currentPage={currentPage} setCurrentPage={setCurrentPage} />
-                            <NavItem label="Recorded Entries" page="recordedEntries" currentPage={currentPage} setCurrentPage={setCurrentPage} />
+            <div className="min-h-screen bg-gray-100 font-sans antialiased flex">
+                {/* Left Sidebar Navigation */}
+                <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-gradient-to-b from-blue-800 to-blue-900 text-white transition-all duration-300 ease-in-out flex flex-col shadow-lg`}>
+                    {/* Header */}
+                    <div className="p-4 border-b border-blue-700">
+                        <div className="flex items-center justify-between">
+                            <h1 className={`font-bold transition-all duration-300 ${sidebarOpen ? 'text-xl' : 'text-sm'}`}>
+                                {sidebarOpen ? 'Flour Mill ERP' : 'FME'}
+                            </h1>
+                            <button 
+                                onClick={() => setSidebarOpen(!sidebarOpen)}
+                                className="p-1 rounded hover:bg-blue-700 transition-colors"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sidebarOpen ? "M11 19l-7-7 7-7m8 14l-7-7 7-7" : "M13 5l7 7-7 7M5 5l7 7-7 7"} />
+                                </svg>
+                            </button>
                         </div>
                     </div>
-                </nav>
+
+                    {/* Navigation Menu */}
+                    <nav className="flex-1 py-4 overflow-y-auto">
+                        <SidebarItem 
+                            icon="🏠" 
+                            label="Dashboard" 
+                            page="dashboard" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        
+                        {/* Master Data Section */}
+                        <div className="px-4 py-2">
+                            <div className={`text-xs font-semibold text-blue-300 uppercase tracking-wide ${sidebarOpen ? 'block' : 'hidden'}`}>
+                                Master Data
+                            </div>
+                        </div>
+                        <SidebarItem 
+                            icon="👥" 
+                            label="Party Master" 
+                            page="partyMaster" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="📦" 
+                            label="Item Master" 
+                            page="itemMaster" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="🏷️" 
+                            label="Subcategory Manager" 
+                            page="subcategoryManager" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+
+                        {/* Stock Management Section */}
+                        <div className="px-4 py-2 mt-4">
+                            <div className={`text-xs font-semibold text-blue-300 uppercase tracking-wide ${sidebarOpen ? 'block' : 'hidden'}`}>
+                                Stock Management
+                            </div>
+                        </div>
+                        <SidebarItem 
+                            icon="📊" 
+                            label="Stock Control" 
+                            page="stockControl" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="🏭" 
+                            label="Production Floor" 
+                            page="productionFloorStock" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+
+                        {/* Transactions Section */}
+                        <div className="px-4 py-2 mt-4">
+                            <div className={`text-xs font-semibold text-blue-300 uppercase tracking-wide ${sidebarOpen ? 'block' : 'hidden'}`}>
+                                Transactions
+                            </div>
+                        </div>
+                        <SidebarItem 
+                            icon="📥" 
+                            label="Gate Inward" 
+                            page="gateInward" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="📤" 
+                            label="Issue Note (Internal)" 
+                            page="issueNoteInternal" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="🔄" 
+                            label="Inward (Internal)" 
+                            page="inwardInternal" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                        <SidebarItem 
+                            icon="🚚" 
+                            label="Outward Challan" 
+                            page="outwardChallan" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+
+                        {/* Reports Section */}
+                        <div className="px-4 py-2 mt-4">
+                            <div className={`text-xs font-semibold text-blue-300 uppercase tracking-wide ${sidebarOpen ? 'block' : 'hidden'}`}>
+                                Reports
+                            </div>
+                        </div>
+                        <SidebarItem 
+                            icon="📋" 
+                            label="Recorded Entries" 
+                            page="recordedEntries" 
+                            currentPage={currentPage} 
+                            setCurrentPage={setCurrentPage}
+                            sidebarOpen={sidebarOpen}
+                        />
+                    </nav>
+
+                    {/* Footer */}
+                    <div className="p-4 border-t border-blue-700">
+                        <div className={`text-xs text-blue-300 ${sidebarOpen ? 'block' : 'hidden'}`}>
+                            User ID: {userId?.slice(0, 8)}...
+                        </div>
+                    </div>
+                </aside>
 
                 {/* Main Content Area */}
-                <main className="container mx-auto p-6">
-                    {currentPage === 'dashboard' && <DashboardPage userId={userId} setCurrentPage={setCurrentPage} />}
-                    {currentPage === 'partyMaster' && <PartyMasterForm />}
-                    {currentPage === 'itemMaster' && <ItemMasterForm />}
-                    {currentPage === 'subcategoryManager' && <SubcategoryManagerPage />}
-                    {currentPage === 'stockControl' && <StockControlPage />}
-                    {currentPage === 'productionFloorStock' && <ProductionFloorStockPage />}
-                    {currentPage === 'gateInward' && <GateInwardForm />}
-                    {currentPage === 'issueNoteInternal' && <IssueNoteInternalForm />}
-                    {currentPage === 'inwardInternal' && <InwardInternalForm />}
-                    {currentPage === 'outwardChallan' && <OutwardChallanForm />}
-                    {currentPage === 'recordedEntries' && <RecordedEntriesPage />}
+                <main className="flex-1 overflow-y-auto">
+                    {/* Top Header Bar */}
+                    <header className="bg-white shadow-sm border-b border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-2xl font-bold text-gray-800">
+                                {getPageTitle(currentPage)}
+                            </h2>
+                            <div className="text-sm text-gray-500">
+                                {new Date().toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                })}
+                            </div>
+                        </div>
+                    </header>
 
-                    {/* Overview Pages */}
-                    {currentPage === 'partyOverview' && <PartyOverviewPage />}
-                    {currentPage === 'itemCatalogOverview' && <ItemCatalogOverviewPage />}
-                    {currentPage === 'productionOverview' && <ProductionOverviewPage />}
-                    {currentPage === 'dispatchOverview' && <DispatchOverviewPage />}
+                    {/* Page Content */}
+                    <div className="p-6">
+                        {currentPage === 'dashboard' && <DashboardPage userId={userId} setCurrentPage={setCurrentPage} />}
+                        {currentPage === 'partyMaster' && <PartyMasterForm />}
+                        {currentPage === 'itemMaster' && <ItemMasterForm />}
+                        {currentPage === 'subcategoryManager' && <SubcategoryManagerPage />}
+                        {currentPage === 'stockControl' && <StockControlPage />}
+                        {currentPage === 'productionFloorStock' && <ProductionFloorStockPage />}
+                        {currentPage === 'gateInward' && <GateInwardForm />}
+                        {currentPage === 'issueNoteInternal' && <IssueNoteInternalForm />}
+                        {currentPage === 'inwardInternal' && <InwardInternalForm />}
+                        {currentPage === 'outwardChallan' && <OutwardChallanForm />}
+                        {currentPage === 'recordedEntries' && <RecordedEntriesPage />}
+
+                        {/* Overview Pages */}
+                        {currentPage === 'partyOverview' && <PartyOverviewPage />}
+                        {currentPage === 'itemCatalogOverview' && <ItemCatalogOverviewPage />}
+                        {currentPage === 'productionOverview' && <ProductionOverviewPage />}
+                        {currentPage === 'dispatchOverview' && <DispatchOverviewPage />}
+                    </div>
                 </main>
             </div>
         </AppContext.Provider>
     );
 };
 
-// NavItem Component
-const NavItem = ({ label, page, currentPage, setCurrentPage }) => (
+// Sidebar Item Component
+const SidebarItem = ({ icon, label, page, currentPage, setCurrentPage, sidebarOpen }) => (
     <button
         onClick={() => setCurrentPage(page)}
-        className={`px-4 py-2 rounded-lg text-white font-medium transition-all duration-300
-                    ${currentPage === page ? 'bg-blue-700 shadow-md' : 'hover:bg-blue-700 hover:shadow-md'}`}
+        className={`w-full flex items-center px-4 py-3 text-left transition-all duration-200 hover:bg-blue-700 hover:border-r-4 hover:border-blue-300 ${
+            currentPage === page 
+                ? 'bg-blue-700 border-r-4 border-blue-300 text-white' 
+                : 'text-blue-100 hover:text-white'
+        }`}
+        title={!sidebarOpen ? label : ''}
     >
-        {label}
+        <span className="text-xl mr-3 flex-shrink-0">{icon}</span>
+        <span className={`font-medium transition-all duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+            {label}
+        </span>
     </button>
 );
+
+// Helper function to get page titles
+const getPageTitle = (page) => {
+    const pageTitles = {
+        dashboard: 'Dashboard',
+        partyMaster: 'Party Master',
+        itemMaster: 'Item Master',
+        subcategoryManager: 'Subcategory Manager',
+        stockControl: 'Stock Control',
+        productionFloorStock: 'Production Floor Stock',
+        gateInward: 'Gate Inward',
+        issueNoteInternal: 'Issue Note (Internal)',
+        inwardInternal: 'Inward (Internal)',
+        outwardChallan: 'Outward Challan',
+        recordedEntries: 'Recorded Entries',
+        partyOverview: 'Party Overview',
+        itemCatalogOverview: 'Item Catalog Overview',
+        productionOverview: 'Production Overview',
+        dispatchOverview: 'Dispatch Overview'
+    };
+    return pageTitles[page] || 'Flour Mill ERP';
+};
+
+// ...existing code for all your components (DashboardPage, PartyMasterForm, etc.)
 
 // Dashboard Page (Placeholder)
 const DashboardPage = ({ userId, setCurrentPage }) => {
@@ -245,22 +427,44 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
     // Common Components: InputField, SelectField, Button, Modal, LoadingSpinner
 
-    const InputField = ({ label, id, type = "text", value, onChange, placeholder, required = false, className = "" }) => (
-        <div className="mb-4">
-            <label htmlFor={id} className="block text-gray-700 text-sm font-bold mb-2">
-                {label} {required && <span className="text-red-500">*</span>}
-            </label>
-            <input
-                type={type}
-                id={id}
-                className={`shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}`}
-                value={value}
-                onChange={onChange}
-                placeholder={placeholder}
-                required={required}
-            />
-        </div>
-    );
+    const InputField = ({ label, id, type = "text", value, onChange, placeholder, required = false, className = "", readOnly = false, disabled = false, min, max }) => {
+        // For date inputs, set max to today's date if not explicitly provided
+        const getDateRestrictions = () => {
+            if (type === "date") {
+                const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+                return {
+                    max: max || today, // Don't allow future dates unless explicitly allowed
+                    min: min || undefined
+                };
+            }
+            return {};
+        };
+
+        const dateRestrictions = getDateRestrictions();
+
+        return (
+            <div className="mb-4">
+                <label htmlFor={id} className="block text-gray-700 text-sm font-bold mb-2">
+                    {label} {required && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                    type={type}
+                    id={id}
+                    className={`shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}`}
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    required={required}
+                    readOnly={readOnly}
+                    disabled={disabled}
+                    {...dateRestrictions}
+                />
+                {type === "date" && !max && (
+                    <p className="text-xs text-gray-500 mt-1">Future dates are not allowed</p>
+                )}
+            </div>
+        );
+    };
 
     const SelectField = ({ label, id, value, onChange, options, required = false, className = "" }) => (
         <div className="mb-4">
@@ -294,6 +498,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         </button>
     );
 
+    // ...existing code...
+
     const Modal = ({ show, title, message, onClose, onConfirm, showConfirmButton = false, confirmText = "Confirm", children }) => {
         if (!show) return null;
 
@@ -301,8 +507,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
                 <div className="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full transform transition-all duration-300 scale-100 opacity-100">
                     <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">{title}</h3>
-                    <p className="text-gray-700 mb-6">{message}</p>
-                    {children} /* Render children inside the modal for custom content like InputField */
+                    {message && <p className="text-gray-700 mb-6">{message}</p>}
+                    {children && <div className="mb-6">{children}</div>}
                     <div className="flex justify-end space-x-4">
                         <Button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800">
                             {showConfirmButton ? "Cancel" : "Close"}
@@ -318,6 +524,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
+// ...existing code...
+
     const LoadingSpinner = () => (
         <div className="flex justify-center items-center py-8">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -328,6 +536,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
     // Form Components
     // 1. Party Master Form
+    // Update the PartyMasterForm component - fix the clear button styling
     const PartyMasterForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [parties, setParties] = useState([]);
@@ -469,9 +678,23 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     <InputField label="Bank Name" id="bankName" value={bankName} onChange={(e) => setBankName(e.target.value)} required={true} placeholder="e.g., State Bank of India" />
                     <InputField label="IFS Code" id="ifscCode" value={ifscCode} onChange={(e) => setIfscCode(e.target.value)} required={true} placeholder="e.g., SBIN0000001" />
 
-                    <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
-                        <Button type="submit">{editingPartyId ? 'Update Party' : 'Add Party'}</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear</Button>
+                    {/* Improved Form Action Buttons */}
+                    <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200 mt-4">
+                        <Button 
+                            type="submit"
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>👥</span>
+                            {editingPartyId ? 'Update Party' : 'Add Party'}
+                        </Button>
+                        <Button 
+                            onClick={resetForm} 
+                            type="button"
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🔄</span>
+                            Clear Form
+                        </Button>
                     </div>
                 </form>
 
@@ -510,7 +733,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                             </tbody>
                         </table>
                     </div>
-)}
+                )}
                 <Modal
                     show={modal.show}
                     title={modal.title}
@@ -704,6 +927,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setField4Label('Description 4');
             setField5Label('Description 5');
         };
+
 
         const handleEdit = (item) => {
             setEditingItemId(item.id);
@@ -972,11 +1196,24 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                         <InputField label="Rack/BIN Location" id="rackBin" value={rackBin} onChange={(e) => setRackBin(e.target.value)} placeholder="e.g., A1-B2" />
                     </div>
 
-                    <div className="flex justify-end space-x-4">
-                        <Button type="submit" disabled={isGeneratingCode}>
+                    {/* Improved Form Action Buttons */}
+                    <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
+                        <Button 
+                            type="submit" 
+                            disabled={isGeneratingCode}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        >
+                            <span>📦</span>
                             {editingItemId ? 'Update Item' : 'Create Item'}
                         </Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
+                        <Button 
+                            onClick={resetForm} 
+                            type="button"
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🔄</span>
+                            {editingItemId ? 'Cancel Edit' : 'Clear Form'}
+                        </Button>
                     </div>
                 </form>
 
@@ -1287,19 +1524,47 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
     };
 
     // 4. Gate Inward Form
+    // Update the GateInwardForm component with these changes
+
     const GateInwardForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [parties, setParties] = useState([]);
         const [items, setItems] = useState([]);
-        const [billNo, setBillNo] = useState('');
-        const [billDate, setBillDate] = useState('');
         const [supplierId, setSupplierId] = useState(''); // Store supplier ID
-        const [grn, setGrn] = useState('');
+        const [grn, setGrn] = useState(''); // Auto-generated GRN number
         const [grnDate, setGrnDate] = useState('');
+        const [billNo, setBillNo] = useState(''); // Now optional
+        const [billDate, setBillDate] = useState('');
         const [paymentTerms, setPaymentTerms] = useState('');
         const [inwardItems, setInwardItems] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, amount: 0, remark: '' }]);
+        
+        // New states for recent entries and editing
+        const [recentEntries, setRecentEntries] = useState([]);
+        const [editingEntry, setEditingEntry] = useState(null);
+        const [isLoadingGrn, setIsLoadingGrn] = useState(false);
+        
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+
+        // Generate auto-increment GRN number
+        const generateGrnNumber = async () => {
+            if (editingEntry) return; // Don't generate new number when editing
+            
+            setIsLoadingGrn(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/gate-inwards/generate-grn-number`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setGrn(data.grnNumber);
+            } catch (error) {
+                console.error("Error generating GRN number:", error);
+                // Fallback to timestamp-based number
+                const timestamp = Date.now();
+                setGrn(`GRN-${timestamp}`);
+            } finally {
+                setIsLoadingGrn(false);
+            }
+        };
 
         const fetchInitialData = async () => {
             setIsLoading(true);
@@ -1314,7 +1579,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 const itemResponse = await fetch(`${API_BASE_URL}/items`);
                 if (!itemResponse.ok) throw new Error(`HTTP error! status: ${itemResponse.status}`);
                 const itemData = await itemResponse.json();
-                setItems(itemData.map(i => ({ id: i.id, label: i.full_description, value: i.id, unitRate: parseFloat(i.unit_rate) }))); // Convert to float here
+                setItems(itemData.map(i => ({ id: i.id, label: i.item_name, value: i.id, unitRate: parseFloat(i.unit_rate) })));
             } catch (error) {
                 console.error("Error fetching initial data for Gate Inward:", error);
                 setModal({ show: true, title: "Error", message: "Failed to load initial data. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
@@ -1323,8 +1588,21 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const fetchRecentEntries = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/gate-inwards?limit=5&orderBy=created_at&order=DESC`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setRecentEntries(data);
+            } catch (error) {
+                console.error("Error fetching recent gate inward entries:", error);
+            }
+        };
+
         useEffect(() => {
             fetchInitialData();
+            fetchRecentEntries();
+            generateGrnNumber();
         }, []);
 
         const handleItemChange = (index, field, value) => {
@@ -1355,23 +1633,30 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         };
 
         const resetForm = () => {
-            setBillNo('');
-            setBillDate('');
             setSupplierId('');
             setGrn('');
             setGrnDate('');
+            setBillNo('');
+            setBillDate('');
             setPaymentTerms('');
             setInwardItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, amount: 0, remark: '' }]);
+            setEditingEntry(null);
+            
+            // Generate new GRN number only if not editing
+            if (!editingEntry) {
+                generateGrnNumber();
+            }
         };
+
 
         const handleSubmit = async (e) => {
             e.preventDefault();
             const inwardData = {
-                billNo,
-                billDate,
-                supplierId: Number(supplierId),
-                grn,
+                grn, // GRN is the primary identifier
                 grnDate,
+                billNo: billNo || null, // Bill number is optional
+                billDate: billDate || null,
+                supplierId: Number(supplierId),
                 paymentTerms,
                 items: inwardItems.map(item => ({
                     itemId: Number(item.itemId),
@@ -1385,65 +1670,479 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             };
 
             try {
-                const response = await fetch(`${API_BASE_URL}/gate-inwards`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(inwardData)
-                });
+                let response;
+                if (editingEntry) {
+                    response = await fetch(`${API_BASE_URL}/gate-inwards/${editingEntry.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(inwardData)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/gate-inwards`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(inwardData)
+                    });
+                }
 
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
 
-                setModal({ show: true, title: "Success", message: "Gate Inward entry added successfully and stock updated!", onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Success", 
+                    message: `Gate Inward entry ${editingEntry ? 'updated' : 'added'} successfully and stock updated!`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
                 resetForm();
-                // No need to fetch again here, as stock updates are handled by backend
+                fetchRecentEntries();
             } catch (error) {
-                console.error("Error adding gate inward entry:", error);
-                setModal({ show: true, title: "Error", message: `Failed to save entry: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                console.error("Error saving gate inward entry:", error);
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: `Failed to save entry: ${error.message}`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
             }
+        };
+
+        const handleEdit = (entry) => {
+            setEditingEntry(entry);
+            setSupplierId(entry.supplier_id);
+            setGrn(entry.grn_number); // Set existing GRN for editing
+            setGrnDate(entry.grn_date ? entry.grn_date.split('T')[0] : '');
+            setBillNo(entry.bill_no || '');
+            setBillDate(entry.bill_date ? entry.bill_date.split('T')[0] : '');
+            setPaymentTerms(entry.payment_terms || '');
+            
+            // Populate items
+            if (entry.items && entry.items.length > 0) {
+                setInwardItems(entry.items.map(item => ({
+                    itemId: item.item_id,
+                    unitRate: parseFloat(item.unit_rate),
+                    uom: item.uom,
+                    qty: parseFloat(item.quantity),
+                    amount: parseFloat(item.amount),
+                    remark: item.remark || ''
+                })));
+            }
+        };
+
+        const handleDelete = (entryId) => {
+            setModal({
+                show: true,
+                title: "Confirm Deletion",
+                message: "Are you sure you want to delete this Gate Inward entry? This action cannot be undone and will affect stock levels.",
+                showConfirmButton: true,
+                onConfirm: async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/gate-inwards/${entryId}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        }
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: "Gate Inward entry deleted successfully!", 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        fetchRecentEntries();
+                    } catch (error) {
+                        console.error("Error deleting gate inward entry:", error);
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete entry: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                    }
+                },
+                onClose: () => setModal({ ...modal, show: false })
+            });
+        };
+
+        const handlePrint = (entry) => {
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Gate Inward Receipt - ${entry.grn_number}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                        .document-title { font-size: 18px; color: #666; }
+                        .details-section { margin: 20px 0; }
+                        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+                        .detail-item { padding: 5px 0; }
+                        .detail-label { font-weight: bold; display: inline-block; width: 120px; }
+                        .items-section { margin: 20px 0; }
+                        .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                        .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        .items-table th { background-color: #f5f5f5; font-weight: bold; }
+                        .total-row { background-color: #e8f4f8; font-weight: bold; }
+                        .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="company-name">Flour Mill ERP</div>
+                        <div class="document-title">Gate Inward Receipt</div>
+                    </div>
+                    
+                    <div class="details-section">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">GRN Number:</span>
+                                <span>${entry.grn_number}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">GRN Date:</span>
+                                <span>${entry.grn_date ? new Date(entry.grn_date).toLocaleDateString() : 'N/A'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Supplier:</span>
+                                <span>${entry.supplier_name}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Payment Terms:</span>
+                                <span>${entry.payment_terms || 'N/A'}</span>
+                            </div>
+                            ${entry.bill_no ? `
+                            <div class="detail-item">
+                                <span class="detail-label">Bill Number:</span>
+                                <span>${entry.bill_no}</span>
+                            </div>
+                            ` : ''}
+                            ${entry.bill_date ? `
+                            <div class="detail-item">
+                                <span class="detail-label">Bill Date:</span>
+                                <span>${new Date(entry.bill_date).toLocaleDateString()}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <div class="items-section">
+                        <h3>Items Received</h3>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Item Description</th>
+                                    <th>UOM</th>
+                                    <th>Quantity</th>
+                                    <th>Unit Rate</th>
+                                    <th>Amount</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${entry.items && entry.items.length > 0 ? 
+                                    entry.items.map(item => `
+                                        <tr>
+                                            <td>${item.item_description}</td>
+                                            <td>${item.uom}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                            <td>₹${parseFloat(item.amount).toFixed(2)}</td>
+                                            <td>${item.remark || '-'}</td>
+                                        </tr>
+                                    `).join('') : 
+                                    '<tr><td colspan="6" style="text-align: center;">No items recorded</td></tr>'
+                                }
+                                <tr class="total-row">
+                                    <td colspan="4" style="text-align: right;"><strong>Total Amount:</strong></td>
+                                    <td><strong>₹${entry.items ? entry.items.reduce((total, item) => total + parseFloat(item.amount || 0), 0).toFixed(2) : '0.00'}</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="footer">
+                        <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                        <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            printWindow.document.close();
         };
 
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
-                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Gate Inward</h2>
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    {editingEntry ? 'Edit Gate Inward' : 'Gate Inward'}
+                </h2>
+                
+                {/* Info Banner */}
+                <div className={`border rounded-lg p-4 mb-6 ${editingEntry ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'}`}>
+                    <div className="flex items-center">
+                        <div className={`mr-3 ${editingEntry ? 'text-yellow-600' : 'text-blue-600'}`}>
+                            {editingEntry ? '✏️' : '📥'}
+                        </div>
+                        <div>
+                            <h4 className={`font-semibold ${editingEntry ? 'text-yellow-800' : 'text-blue-800'}`}>
+                                {editingEntry ? 'Editing Gate Inward Entry' : 'Material Receipt Entry'}
+                            </h4>
+                            <p className={`text-sm ${editingEntry ? 'text-yellow-700' : 'text-blue-700'}`}>
+                                {editingEntry ? 
+                                    'You are editing an existing gate inward entry. Changes will update stock levels accordingly.' :
+                                    'GRN number is auto-generated and serves as the unique identifier. Bill number is optional and can be added later.'
+                                }
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
-                        <InputField label="Bill No" id="billNo" value={billNo} onChange={(e) => setBillNo(e.target.value)} required={true} />
-                        <InputField label="Bill Date" id="billDate" type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} required={true} />
+                        <div className="relative">
+                            <InputField 
+                                label="GRN Number (Auto-generated)" 
+                                id="grn" 
+                                value={grn} 
+                                readOnly={true}
+                                className="bg-gray-100 cursor-not-allowed"
+                                placeholder={isLoadingGrn ? "Generating..." : "Auto-generated GRN number"}
+                            />
+                            {isLoadingGrn && (
+                                <div className="absolute right-3 top-9">
+                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                </div>
+                            )}
+                        </div>
+                        <InputField 
+                            label="GRN Date" 
+                            id="grnDate" 
+                            type="date" 
+                            value={grnDate} 
+                            onChange={(e) => setGrnDate(e.target.value)} 
+                            required={true}
+                            // max prop will be automatically set to today by InputField
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
                         <SelectField label="Supplier" id="supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} options={parties} required={true} />
-                        <InputField label="GRN#" id="grn" value={grn} onChange={(e) => setGrn(e.target.value)} required={true} />
-                        <InputField label="GRN Date" id="grnDate" type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} required={true} />
-                        <InputField label="Payment Terms" id="paymentTerms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} />
+                        <InputField label="Payment Terms" id="paymentTerms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g., NET 30, Cash" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
+                        <InputField label="Bill Number (Optional)" id="billNo" value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="Supplier's bill/invoice number" />
+                        <InputField 
+                            label="Bill Date (Optional)" 
+                            id="billDate" 
+                            type="date" 
+                            value={billDate} 
+                            onChange={(e) => setBillDate(e.target.value)}
+                            // max prop will be automatically set to today by InputField
+                        />
                     </div>
 
                     <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Items Received</h3>
                     {isLoading ? <LoadingSpinner /> : (
                         inwardItems.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                                <SelectField label="Item" id={`item-${index}`} value={item.itemId} onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} options={items} required={true} className="col-span-2" />
-                                <InputField label="Unit Rate" id={`unitRate-${index}`} type="number" value={item.unitRate} onChange={(e) => handleItemChange(index, 'unitRate', e.target.value)} required={true} />
-                                <InputField label="UOM" id={`uom-${index}`} value={item.uom} onChange={(e) => handleItemChange(index, 'uom', e.target.value)} placeholder="e.g., KG, PC" />
-                                <InputField label="Qty" id={`qty-${index}`} type="number" value={item.qty} onChange={(e) => handleItemChange(index, 'qty', e.target.value)} required={true} />
-                                <InputField label="Amount" id={`amount-${index}`} type="number" value={item.amount} readOnly={true} className="bg-gray-100" />
-                                <div className="flex items-end justify-end col-span-full md:col-span-1">
-                                    <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">Remove</Button>
+                            <div key={index} className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                                {/* First Row - Main Fields */}
+                                <div className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4">
+                                    <SelectField 
+                                        label="Item" 
+                                        id={`item-${index}`} 
+                                        value={item.itemId} 
+                                        onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
+                                        options={items} 
+                                        required={true} 
+                                        className="col-span-2" 
+                                    />
+                                    <InputField 
+                                        label="Unit Rate" 
+                                        id={`unitRate-${index}`} 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={item.unitRate} 
+                                        onChange={(e) => handleItemChange(index, 'unitRate', e.target.value)} 
+                                        required={true} 
+                                    />
+                                    <InputField 
+                                        label="UOM" 
+                                        id={`uom-${index}`} 
+                                        value={item.uom} 
+                                        onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                        placeholder="e.g., KG, PC" 
+                                        required={true}
+                                    />
+                                    <InputField 
+                                        label="Qty" 
+                                        id={`qty-${index}`} 
+                                        type="number" 
+                                        value={item.qty} 
+                                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
+                                        required={true} 
+                                    />
+                                    <InputField 
+                                        label="Amount" 
+                                        id={`amount-${index}`} 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={item.amount} 
+                                        readOnly={true} 
+                                        className="bg-gray-100" 
+                                    />
                                 </div>
-                                <InputField label="Remark" id={`remark-${index}`} value={item.remark} onChange={(e) => handleItemChange(index, 'remark', e.target.value)} className="col-span-full" />
+                                
+                                {/* Second Row - Remark and Remove Button */}
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-x-4 gap-y-2 items-end">
+                                    <div className="md:col-span-10">
+                                        <InputField 
+                                            label="Remark" 
+                                            id={`remark-${index}`} 
+                                            value={item.remark} 
+                                            onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
+                                            placeholder="Optional notes for this item"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2 flex justify-end">
+                                        <Button 
+                                            onClick={() => removeItemRow(index)} 
+                                            className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2 h-10"
+                                            type="button"
+                                        >
+                                            <span>🗑️</span>
+                                            <span className="hidden md:inline">Remove</span>
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         ))
                     )}
 
                     <div className="flex justify-end mb-6">
-                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">Add Another Item</Button>
+                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">
+                            Add Another Item
+                        </Button>
                     </div>
 
-                    <div className="flex justify-end space-x-4">
-                        <Button type="submit">Submit Inward Entry</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
+                    {/* Improved Form Action Buttons */}
+                    <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
+                        <Button 
+                            type="submit"
+                            className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>📦</span>
+                            {editingEntry ? 'Update Gate Inward Entry' : 'Submit Inward Entry'}
+                        </Button>
+                        <Button 
+                            onClick={resetForm} 
+                            type="button"
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🔄</span>
+                            {editingEntry ? 'Cancel Edit' : 'Clear Form'}
+                        </Button>
                     </div>
                 </form>
+                {/* Recent Entries Section */}
+                <div className="mt-12 border-t-2 border-gray-200 pt-8">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-blue-400 pb-2">
+                        Recent Gate Inward Entries (Last 5)
+                    </h3>
+                    
+                    {recentEntries.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-4xl mb-4">📥</div>
+                            <p>No gate inward entries recorded yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {recentEntries.map((entry) => (
+                                <div key={entry.id} className="bg-gray-50 border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">GRN Number:</span>
+                                                <p className="text-lg font-bold text-blue-700">{entry.grn_number}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">GRN Date:</span>
+                                                <p className="text-gray-800">{entry.grn_date ? new Date(entry.grn_date).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Supplier:</span>
+                                                <p className="text-gray-800">{entry.supplier_name}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Total Amount:</span>
+                                                <p className="text-gray-800 font-bold">₹{entry.items ? entry.items.reduce((total, item) => total + parseFloat(item.amount || 0), 0).toFixed(2) : '0.00'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex space-x-2 ml-4">
+                                            <Button 
+                                                onClick={() => handleEdit(entry)} 
+                                                className="bg-blue-500 hover:bg-blue-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                ✏️ Edit
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handlePrint(entry)} 
+                                                className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🖨️ Print
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handleDelete(entry.id)} 
+                                                className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🗑️ Delete
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="border-l-4 border-blue-500 pl-4">
+                                        <h4 className="font-semibold text-blue-700 mb-2">📦 Items Received</h4>
+                                        {entry.items && entry.items.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {entry.items.map((item, idx) => (
+                                                    <div key={idx} className="text-sm text-gray-700">
+                                                        <strong>{item.item_description}</strong> - {item.quantity} {item.uom} @ ₹{parseFloat(item.unit_rate).toFixed(2)} = ₹{parseFloat(item.amount).toFixed(2)}
+                                                        {item.remark && <span className="text-gray-500"> ({item.remark})</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No items recorded</p>
+                                        )}
+                                    </div>
+                                    
+                                    {(entry.bill_no || entry.payment_terms) && (
+                                        <div className="mt-4 pt-4 border-t border-gray-300 text-sm text-gray-600">
+                                            {entry.bill_no && <span className="mr-4"><strong>Bill#:</strong> {entry.bill_no}</span>}
+                                            {entry.payment_terms && <span><strong>Payment:</strong> {entry.payment_terms}</span>}
+                                        </div>
+                                    )}
+                                    
+                                    <div className="mt-4 pt-4 border-t border-gray-300 text-xs text-gray-500">
+                                        Created: {new Date(entry.created_at).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 <Modal
                     show={modal.show}
                     title={modal.title}
@@ -1458,6 +2157,9 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
     // 5. Issue Note - Internal Form
     // Updated Issue Note - Internal Form
+        // Update the IssueNoteInternalForm component with recent entries functionality
+
+        // Update the IssueNoteInternalForm component
     const IssueNoteInternalForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [departments, setDepartments] = useState([
@@ -1466,25 +2168,50 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             { label: 'Quality Control', value: 'Quality Control' },
             { label: 'R&D', value: 'R&D' }
         ]);
-        const [rawMaterialItems, setRawMaterialItems] = useState([]); // Only raw materials from main stock
+        const [rawMaterialItems, setRawMaterialItems] = useState([]);
         const [department, setDepartment] = useState('');
         const [issueNo, setIssueNo] = useState('');
         const [issueDate, setIssueDate] = useState('');
         const [issuedBy, setIssuedBy] = useState('');
         const [issuedItems, setIssuedItems] = useState([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
+        
+        // New states for recent entries and editing
+        const [recentEntries, setRecentEntries] = useState([]);
+        const [editingEntry, setEditingEntry] = useState(null);
+        const [isLoadingIssueNo, setIsLoadingIssueNo] = useState(false);
+        
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+
+        // Generate auto-increment issue number
+        const generateIssueNumber = async () => {
+            if (editingEntry) return; // Don't generate new number when editing
+            
+            setIsLoadingIssueNo(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/issue-notes-internal/generate-issue-number`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setIssueNo(data.issueNumber);
+            } catch (error) {
+                console.error("Error generating issue number:", error);
+                // Fallback to timestamp-based number
+                const timestamp = Date.now();
+                setIssueNo(`ISS-${timestamp.toString().slice(-3)}`);
+            } finally {
+                setIsLoadingIssueNo(false);
+            }
+        };
 
         const fetchRawMaterials = async () => {
             setIsLoading(true);
             try {
-                // Fetch only raw materials from main stock
                 const response = await fetch(`${API_BASE_URL}/items/by-category/Raw Material`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 setRawMaterialItems(data.map(i => ({ 
                     id: i.id, 
-                    label: `${i.item_name} - ${i.full_description}`, 
+                    label: i.item_name, 
                     value: i.id, 
                     unitRate: parseFloat(i.unit_rate), 
                     stock: i.stock,
@@ -1500,8 +2227,21 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const fetchRecentEntries = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/issue-notes-internal?limit=5&orderBy=created_at&order=DESC`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setRecentEntries(data);
+            } catch (error) {
+                console.error("Error fetching recent issue note entries:", error);
+            }
+        };
+
         useEffect(() => {
             fetchRawMaterials();
+            fetchRecentEntries();
+            generateIssueNumber(); // Generate issue number on component mount
         }, []);
 
         const handleItemChange = (index, field, value) => {
@@ -1533,6 +2273,12 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setIssueDate('');
             setIssuedBy('');
             setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
+            setEditingEntry(null);
+            
+            // Generate new issue number only if not editing
+            if (!editingEntry) {
+                generateIssueNumber();
+            }
         };
 
         const validateStock = () => {
@@ -1554,8 +2300,8 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         const handleSubmit = async (e) => {
             e.preventDefault();
 
-            // Validate stock before submission
-            if (!validateStock()) {
+            // Validate stock before submission (only for new entries)
+            if (!editingEntry && !validateStock()) {
                 return;
             }
 
@@ -1575,27 +2321,39 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             };
 
             try {
-                const response = await fetch(`${API_BASE_URL}/issue-notes-internal`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(issueData)
-                });
+                let response;
+                if (editingEntry) {
+                    response = await fetch(`${API_BASE_URL}/issue-notes-internal/${editingEntry.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(issueData)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/issue-notes-internal`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(issueData)
+                    });
+                }
 
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
 
+                const result = await response.json();
+                
                 setModal({ 
                     show: true, 
                     title: "Success", 
-                    message: "Issue Note created successfully! Raw materials moved to production floor and main stock updated.", 
+                    message: `Issue Note ${editingEntry ? 'updated' : 'created'} successfully! ${result.actualIssueNo ? `Issue Number: ${result.actualIssueNo}` : ''} Raw materials ${editingEntry ? 'updated on' : 'moved to'} production floor and main stock updated.`, 
                     onClose: () => setModal({ ...modal, show: false }) 
                 });
                 resetForm();
                 fetchRawMaterials(); // Re-fetch to update stock display
+                fetchRecentEntries(); // Re-fetch recent entries
             } catch (error) {
-                console.error("Error adding issue note entry:", error);
+                console.error("Error saving issue note entry:", error);
                 setModal({ 
                     show: true, 
                     title: "Error", 
@@ -1605,21 +2363,186 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const handleEdit = (entry) => {
+            setEditingEntry(entry);
+            setDepartment(entry.department);
+            setIssueNo(entry.issue_no);
+            setIssueDate(entry.issue_date ? entry.issue_date.split('T')[0] : '');
+            setIssuedBy(entry.issued_by);
+            
+            // Populate items
+            if (entry.items && entry.items.length > 0) {
+                setIssuedItems(entry.items.map(item => ({
+                    itemId: item.item_id,
+                    unitRate: parseFloat(item.unit_rate),
+                    uom: item.uom,
+                    qty: parseFloat(item.quantity),
+                    remark: item.remark || '',
+                    availableStock: parseFloat(item.quantity) // Set current quantity as available for editing
+                })));
+            }
+        };
+
+        const handleDelete = (entryId) => {
+            setModal({
+                show: true,
+                title: "Confirm Deletion",
+                message: "Are you sure you want to delete this Issue Note? This action cannot be undone and will affect stock levels.",
+                showConfirmButton: true,
+                onConfirm: async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/issue-notes-internal/${entryId}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        }
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: "Issue Note deleted successfully!", 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        fetchRecentEntries(); // Re-fetch recent entries
+                        fetchRawMaterials(); // Re-fetch materials to update stock
+                    } catch (error) {
+                        console.error("Error deleting issue note entry:", error);
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete entry: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                    }
+                },
+                onClose: () => setModal({ ...modal, show: false })
+            });
+        };
+
+        const handlePrint = (entry) => {
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Issue Note Internal - ${entry.issue_no}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                        .document-title { font-size: 18px; color: #666; }
+                        .details-section { margin: 20px 0; }
+                        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+                        .detail-item { padding: 5px 0; }
+                        .detail-label { font-weight: bold; display: inline-block; width: 120px; }
+                        .items-section { margin: 20px 0; }
+                        .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                        .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        .items-table th { background-color: #f5f5f5; font-weight: bold; }
+                        .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="company-name">Flour Mill ERP</div>
+                        <div class="document-title">Internal Issue Note</div>
+                    </div>
+                    
+                    <div class="details-section">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Issue No:</span>
+                                <span>${entry.issue_no}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Issue Date:</span>
+                                <span>${entry.issue_date ? new Date(entry.issue_date).toLocaleDateString() : 'N/A'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Department:</span>
+                                <span>${entry.department}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Issued By:</span>
+                                <span>${entry.issued_by}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="items-section">
+                        <h3>Raw Materials Issued to Production Floor</h3>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Item Description</th>
+                                    <th>UOM</th>
+                                    <th>Quantity Issued</th>
+                                    <th>Unit Rate</th>
+                                    <th>Total Value</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${entry.items && entry.items.length > 0 ? 
+                                    entry.items.map(item => `
+                                        <tr>
+                                            <td>${item.item_description}</td>
+                                            <td>${item.uom}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                            <td>₹${(parseFloat(item.quantity) * parseFloat(item.unit_rate)).toFixed(2)}</td>
+                                            <td>${item.remark || '-'}</td>
+                                        </tr>
+                                    `).join('') : 
+                                    '<tr><td colspan="6" style="text-align: center;">No items recorded</td></tr>'
+                                }
+                                <tr style="background-color: #e8f4f8; font-weight: bold;">
+                                    <td colspan="4" style="text-align: right;"><strong>Total Value:</strong></td>
+                                    <td><strong>₹${entry.items ? entry.items.reduce((total, item) => total + (parseFloat(item.quantity) * parseFloat(item.unit_rate)), 0).toFixed(2) : '0.00'}</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="footer">
+                        <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                        <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        };
+
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
                 <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
-                    Issue Note - Internal (Raw Material to Production Floor)
+                    {editingEntry ? 'Edit Issue Note (Internal)' : 'Issue Note - Internal (Raw Material to Production Floor)'}
                 </h2>
                 
                 {/* Info Banner */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className={`border rounded-lg p-4 mb-6 ${editingEntry ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'}`}>
                     <div className="flex items-center">
-                        <div className="text-blue-600 mr-3">ℹ️</div>
+                        <div className={`mr-3 ${editingEntry ? 'text-yellow-600' : 'text-blue-600'}`}>
+                            {editingEntry ? '✏️' : 'ℹ️'}
+                        </div>
                         <div>
-                            <h4 className="font-semibold text-blue-800">Production Material Issue</h4>
-                            <p className="text-blue-700 text-sm">
-                                This form transfers raw materials from main warehouse stock to production floor. 
-                                Materials will be available for production processes and finished goods creation.
+                            <h4 className={`font-semibold ${editingEntry ? 'text-yellow-800' : 'text-blue-800'}`}>
+                                {editingEntry ? 'Editing Issue Note' : 'Production Material Issue'}
+                            </h4>
+                            <p className={`text-sm ${editingEntry ? 'text-yellow-700' : 'text-blue-700'}`}>
+                                {editingEntry ? 
+                                    'You are editing an existing issue note. Changes will update stock levels accordingly.' :
+                                    'Issue number is auto-generated. This form transfers raw materials from main warehouse stock to production floor. Materials will be available for production processes and finished goods creation.'
+                                }
                             </p>
                         </div>
                     </div>
@@ -1628,68 +2551,104 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-6">
                         <SelectField label="Department" id="department" value={department} onChange={(e) => setDepartment(e.target.value)} options={departments} required={true} />
-                        <InputField label="Issue No." id="issueNo" value={issueNo} onChange={(e) => setIssueNo(e.target.value)} required={true} placeholder="e.g., ISS-001" />
-                        <InputField label="Issue Date" id="issueDate" type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} required={true} />
+                        <div className="relative">
+                            <InputField 
+                                label="Issue No. (Auto-generated)" 
+                                id="issueNo" 
+                                value={issueNo} 
+                                onChange={(e) => setIssueNo(e.target.value)} 
+                                required={true} 
+                                readOnly={!editingEntry}
+                                className={!editingEntry ? "bg-gray-100 cursor-not-allowed" : ""}
+                                placeholder={isLoadingIssueNo ? "Generating..." : "Auto-generated issue number"}
+                            />
+                            {isLoadingIssueNo && (
+                                <div className="absolute right-3 top-9">
+                                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                </div>
+                            )}
+                        </div>
+                        <InputField 
+                            label="Issue Date" 
+                            id="issueDate" 
+                            type="date" 
+                            value={issueDate} 
+                            onChange={(e) => setIssueDate(e.target.value)} 
+                            required={true}
+                        />
                         <InputField label="Issued By" id="issuedBy" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} required={true} placeholder="e.g., John Doe" />
                     </div>
 
                     <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Raw Materials to Issue</h3>
                     {isLoading ? <LoadingSpinner /> : (
                         issuedItems.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                                <SelectField 
-                                    label="Raw Material Item" 
-                                    id={`issuedItem-${index}`} 
-                                    value={item.itemId} 
-                                    onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
-                                    options={rawMaterialItems} 
-                                    required={true} 
-                                    className="col-span-2" 
-                                />
-                                <InputField 
-                                    label="Unit Rate" 
-                                    id={`issuedUnitRate-${index}`} 
-                                    type="number" 
-                                    step="0.01"
-                                    value={item.unitRate} 
-                                    readOnly={true} 
-                                    className="bg-gray-100" 
-                                />
-                                <InputField 
-                                    label="UOM" 
-                                    id={`issuedUom-${index}`} 
-                                    value={item.uom} 
-                                    onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
-                                    placeholder="e.g., KG, PC" 
-                                    required={true}
-                                />
-                                <div>
-                                    <InputField 
-                                        label={`Qty (Available: ${item.availableStock})`}
-                                        id={`issuedQty-${index}`} 
-                                        type="number" 
-                                        value={item.qty} 
-                                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
-                                        required={true}
-                                        className={Number(item.qty) > item.availableStock ? 'border-red-500 bg-red-50' : ''}
+                            <div key={index} className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                                {/* First Row - Main Fields */}
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-x-4 gap-y-2 mb-4">
+                                    <SelectField 
+                                        label="Raw Material Item" 
+                                        id={`issuedItem-${index}`} 
+                                        value={item.itemId} 
+                                        onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
+                                        options={rawMaterialItems} 
+                                        required={true} 
+                                        className="col-span-2" 
                                     />
-                                    {Number(item.qty) > item.availableStock && (
-                                        <p className="text-red-500 text-xs mt-1">⚠️ Exceeds available stock</p>
-                                    )}
+                                    <InputField 
+                                        label="Unit Rate" 
+                                        id={`issuedUnitRate-${index}`} 
+                                        type="number" 
+                                        step="0.01"
+                                        value={item.unitRate} 
+                                        readOnly={true} 
+                                        className="bg-gray-100" 
+                                    />
+                                    <InputField 
+                                        label="UOM" 
+                                        id={`issuedUom-${index}`} 
+                                        value={item.uom} 
+                                        onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                        placeholder="e.g., KG, PC" 
+                                        required={true}
+                                    />
+                                    <div>
+                                        <InputField 
+                                            label={`Qty ${!editingEntry ? `(Available: ${item.availableStock})` : ''}`}
+                                            id={`issuedQty-${index}`} 
+                                            type="number" 
+                                            value={item.qty} 
+                                            onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
+                                            required={true}
+                                            className={!editingEntry && Number(item.qty) > item.availableStock ? 'border-red-500 bg-red-50' : ''}
+                                        />
+                                        {!editingEntry && Number(item.qty) > item.availableStock && (
+                                            <p className="text-red-500 text-xs mt-1">⚠️ Exceeds available stock</p>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-end justify-end">
-                                    <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">
-                                        Remove
-                                    </Button>
+                                
+                                {/* Second Row - Remark and Remove Button */}
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-x-4 gap-y-2 items-end">
+                                    <div className="md:col-span-10">
+                                        <InputField 
+                                            label="Remark" 
+                                            id={`issuedRemark-${index}`} 
+                                            value={item.remark} 
+                                            onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
+                                            placeholder="Optional notes about this material issue"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2 flex justify-end">
+                                        <Button 
+                                            onClick={() => removeItemRow(index)} 
+                                            className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2 h-10"
+                                            type="button"
+                                        >
+                                            <span>🗑️</span>
+                                            <span className="hidden md:inline">Remove</span>
+                                        </Button>
+                                    </div>
                                 </div>
-                                <InputField 
-                                    label="Remark" 
-                                    id={`issuedRemark-${index}`} 
-                                    value={item.remark} 
-                                    onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
-                                    className="col-span-full" 
-                                    placeholder="Optional notes about this material issue"
-                                />
                             </div>
                         ))
                     )}
@@ -1700,11 +2659,110 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                         </Button>
                     </div>
 
-                    <div className="flex justify-end space-x-4">
-                        <Button type="submit">Issue Materials to Production Floor</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
+                    {/* Improved Form Action Buttons */}
+                    <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
+                        <Button 
+                            type="submit"
+                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>📤</span>
+                            {editingEntry ? 'Update Issue Note' : 'Issue Materials to Production Floor'}
+                        </Button>
+                        <Button 
+                            onClick={resetForm} 
+                            type="button"
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🔄</span>
+                            {editingEntry ? 'Cancel Edit' : 'Clear Form'}
+                        </Button>
                     </div>
                 </form>
+
+                {/* Recent Entries Section */}
+                <div className="mt-12 border-t-2 border-gray-200 pt-8">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-blue-400 pb-2">
+                        Recent Issue Notes (Last 5)
+                    </h3>
+                    
+                    {recentEntries.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-4xl mb-4">📤</div>
+                            <p>No issue notes recorded yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {recentEntries.map((entry) => (
+                                <div key={entry.id} className="bg-gray-50 border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Issue No:</span>
+                                                <p className="text-lg font-bold text-red-700">{entry.issue_no}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Issue Date:</span>
+                                                <p className="text-gray-800">{entry.issue_date ? new Date(entry.issue_date).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Department:</span>
+                                                <p className="text-gray-800">{entry.department}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Issued By:</span>
+                                                <p className="text-gray-800">{entry.issued_by}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex space-x-2 ml-4">
+                                            <Button 
+                                                onClick={() => handleEdit(entry)} 
+                                                className="bg-blue-500 hover:bg-blue-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                ✏️ Edit
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handlePrint(entry)} 
+                                                className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🖨️ Print
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handleDelete(entry.id)} 
+                                                className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🗑️ Delete
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="border-l-4 border-red-500 pl-4">
+                                        <h4 className="font-semibold text-red-700 mb-2">📤 Raw Materials Issued</h4>
+                                        {entry.items && entry.items.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {entry.items.map((item, idx) => (
+                                                    <div key={idx} className="text-sm text-gray-700">
+                                                        <strong>{item.item_description}</strong> - {item.quantity} {item.uom} @ ₹{parseFloat(item.unit_rate).toFixed(2)}
+                                                        {item.remark && <span className="text-gray-500"> ({item.remark})</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No items recorded</p>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="mt-4 pt-4 border-t border-gray-300 text-xs text-gray-500">
+                                        Created: {new Date(entry.created_at).toLocaleString()}
+                                        {entry.updated_at && entry.updated_at !== entry.created_at && (
+                                            <span className="ml-4">| Updated: {new Date(entry.updated_at).toLocaleString()}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 <Modal
                     show={modal.show}
                     title={modal.title}
@@ -1717,9 +2775,9 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
-    // ...existing code...
 
-    const InwardInternalForm = () => {
+    // Update the InwardInternalForm component to use a simpler structure
+const InwardInternalForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [departments, setDepartments] = useState([
             { label: 'Production', value: 'Production' },
@@ -1754,9 +2812,10 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 setReceiptNo(data.receiptNumber);
             } catch (error) {
                 console.error("Error generating receipt number:", error);
-                // Fallback to timestamp-based number
+                // Fallback to timestamp-based number with proper formatting
                 const timestamp = Date.now();
-                setReceiptNo(`REC-${timestamp}`);
+                const formattedNumber = `REC-${String(timestamp).slice(-6).padStart(3, '0')}`;
+                setReceiptNo(formattedNumber);
             } finally {
                 setIsLoadingReceipt(false);
             }
@@ -1812,6 +2871,10 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             fetchItems();
             fetchRecentEntries();
             generateReceiptNumber();
+            
+            // Set today's date as default for received date
+            const today = new Date().toISOString().split('T')[0];
+            setRecvDate(today);
         }, []);
 
         // Handle changes for finished goods items
@@ -2399,22 +3462,26 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
-    // 7. Outward Challan / Dispatch Note Form
-    // ...existing code...
 
-// 7. Outward Challan / Dispatch Note Form
+    // 7. Outward Challan / Dispatch Note Form
+
     const OutwardChallanForm = () => {
         const { API_BASE_URL, userId } = useContext(AppContext);
         const [parties, setParties] = useState([]);
         const [items, setItems] = useState([]); // All items
-        const [categories, setCategories] = useState([]); // Add categories state
-        const [selectedPartyId, setSelectedPartyId] = useState(''); // Store party ID
+        const [categories, setCategories] = useState([]);
+        const [selectedPartyId, setSelectedPartyId] = useState('');
         const [challanNo, setChallanNo] = useState('');
         const [challanDate, setChallanDate] = useState('');
         const [transport, setTransport] = useState('');
         const [lrNo, setLrNo] = useState('');
         const [remark, setRemark] = useState('');
         const [outwardItems, setOutwardItems] = useState([{ categoryId: '', itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
+        
+        // New states for recent entries and editing
+        const [recentEntries, setRecentEntries] = useState([]);
+        const [editingEntry, setEditingEntry] = useState(null);
+        
         const [isLoading, setIsLoading] = useState(true);
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
         const [showNewPartyModal, setShowNewPartyModal] = useState(false);
@@ -2443,13 +3510,13 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 const categoryData = await categoryResponse.json();
                 setCategories(categoryData.map(cat => ({ id: cat.id, label: cat.category_name, value: cat.id })));
 
-                // Fetch all items (we'll filter them based on category selection)
+                // Fetch all items
                 const itemResponse = await fetch(`${API_BASE_URL}/items`);
                 if (!itemResponse.ok) throw new Error(`HTTP error! status: ${itemResponse.status}`);
                 const itemData = await itemResponse.json();
                 setItems(itemData.map(item => ({ 
                     id: item.id, 
-                    label: `${item.item_name} - ${item.full_description}`, 
+                    label: item.item_name, 
                     value: item.id, 
                     stock: item.stock,
                     categoryId: item.category_id,
@@ -2463,8 +3530,20 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             }
         };
 
+        const fetchRecentEntries = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/outward-challans?limit=5&orderBy=created_at&order=DESC`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                setRecentEntries(data);
+            } catch (error) {
+                console.error("Error fetching recent outward challan entries:", error);
+            }
+        };
+
         useEffect(() => {
             fetchInitialData();
+            fetchRecentEntries();
         }, []);
 
         const handleItemChange = (index, field, value) => {
@@ -2502,6 +3581,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             setLrNo('');
             setRemark('');
             setOutwardItems([{ categoryId: '', itemId: '', valueOfGoodsUom: '', qty: 0, remark: '' }]);
+            setEditingEntry(null);
         };
 
         const resetNewPartyForm = () => {
@@ -2522,7 +3602,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
             try {
                 const newPartyData = {
-                    partyCode: `ADHOC-${Date.now()}`, // Simple ad-hoc code
+                    partyCode: `ADHOC-${Date.now()}`,
                     partyName: newPartyName,
                     gst: newPartyGst,
                     address: newPartyAddress,
@@ -2532,6 +3612,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     ifscCode: newPartyIfscCode,
                     userId
                 };
+                
                 const response = await fetch(`${API_BASE_URL}/parties`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2542,31 +3623,32 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     const errorData = await response.json();
                     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
+                
                 const result = await response.json();
                 setModal({ show: true, title: "Success", message: `New party "${newPartyName}" created!`, onClose: () => setModal({ ...modal, show: false }) });
                 setShowNewPartyModal(false);
-                resetNewPartyForm(); // Reset new party form fields
-                fetchInitialData(); // Re-fetch parties to update the dropdown
-                setSelectedPartyId(result.id); // Select the newly created party by its ID
+                resetNewPartyForm();
+                fetchInitialData();
+                setSelectedPartyId(result.id);
             } catch (error) {
                 console.error("Error creating new party ad-hoc:", error);
-                setModal({ show: true, title: "Error", message: `Failed to create new party: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ show: true, title: "Error", message: `Failed to create party: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
             }
         };
 
         const validateStock = () => {
             for (let item of outwardItems) {
-                if (item.itemId) {
-                    const selectedItem = items.find(i => i.value === Number(item.itemId));
-                    if (selectedItem && Number(item.qty) > selectedItem.stock) {
-                        setModal({ 
-                            show: true, 
-                            title: "Insufficient Stock", 
-                            message: `${selectedItem.label} has only ${selectedItem.stock} units available, but you're trying to dispatch ${item.qty} units.`, 
-                            onClose: () => setModal({ ...modal, show: false }) 
-                        });
-                        return false;
-                    }
+                if (!item.itemId || Number(item.qty) <= 0) continue;
+                
+                const selectedItem = items.find(i => i.value === Number(item.itemId));
+                if (selectedItem && Number(item.qty) > selectedItem.stock) {
+                    setModal({ 
+                        show: true, 
+                        title: "Insufficient Stock", 
+                        message: `${selectedItem.label} has only ${selectedItem.stock} units available, but you're trying to dispatch ${item.qty} units. Please adjust the quantity or choose a different item.`, 
+                        onClose: () => setModal({ ...modal, show: false }) 
+                    });
+                    return false;
                 }
             }
             return true;
@@ -2575,8 +3657,20 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         const handleSubmit = async (e) => {
             e.preventDefault();
 
-            // Validate stock before submission
-            if (!validateStock()) {
+            // Validate that we have at least one valid item
+            const validItems = outwardItems.filter(item => item.itemId && Number(item.qty) > 0);
+            if (validItems.length === 0) {
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: "Please add at least one item with quantity greater than 0.", 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
+                return;
+            }
+
+            // Validate stock before submission (only for new entries)
+            if (!editingEntry && !validateStock()) {
                 return;
             }
 
@@ -2587,7 +3681,7 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                 transport,
                 lrNo,
                 remark,
-                items: outwardItems.map(item => ({
+                items: validItems.map(item => ({
                     itemId: Number(item.itemId),
                     valueOfGoodsUom: item.valueOfGoodsUom,
                     qty: Number(item.qty),
@@ -2597,38 +3691,243 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
             };
 
             try {
-                const response = await fetch(`${API_BASE_URL}/outward-challans`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(outwardData)
-                });
+                let response;
+                if (editingEntry) {
+                    response = await fetch(`${API_BASE_URL}/outward-challans/${editingEntry.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(outwardData)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/outward-challans`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(outwardData)
+                    });
+                }
+
+                // Better error handling for non-JSON responses
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const textResponse = await response.text();
+                    console.error('Non-JSON response:', textResponse);
+                    throw new Error('Server is experiencing issues. Please check your connection and try again.');
+                }
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                    throw new Error(errorData.message || `Server error (${response.status}). Please try again.`);
                 }
 
-                setModal({ show: true, title: "Success", message: "Outward Challan entry added successfully and stock updated!", onClose: () => setModal({ ...modal, show: false }) });
+                const result = await response.json();
+                
+                setModal({ 
+                    show: true, 
+                    title: "Success", 
+                    message: `Outward Challan ${editingEntry ? 'updated' : 'created'} successfully! Items dispatched and stock updated.`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
                 resetForm();
-                fetchInitialData(); // Re-fetch items to update stock display
+                fetchInitialData(); // Re-fetch to update stock display
+                fetchRecentEntries(); // Re-fetch recent entries
             } catch (error) {
-                console.error("Error adding outward challan entry:", error);
-                setModal({ show: true, title: "Error", message: `Failed to save entry: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                console.error("Error saving outward challan entry:", error);
+                setModal({ 
+                    show: true, 
+                    title: "Error", 
+                    message: `Failed to save entry: ${error.message}`, 
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
             }
+        };
+
+        const handleEdit = (entry) => {
+            setEditingEntry(entry);
+            setSelectedPartyId(entry.party_id);
+            setChallanNo(entry.challan_no);
+            setChallanDate(entry.challan_date ? entry.challan_date.split('T')[0] : '');
+            setTransport(entry.transport || '');
+            setLrNo(entry.lr_no || '');
+            setRemark(entry.remark || '');
+            
+            // Populate items
+            if (entry.items && entry.items.length > 0) {
+                setOutwardItems(entry.items.map(item => ({
+                    categoryId: item.category_id || '',
+                    itemId: item.item_id,
+                    valueOfGoodsUom: item.value_of_goods_uom,
+                    qty: parseFloat(item.quantity),
+                    remark: item.remark || ''
+                })));
+            }
+        };
+
+        const handleDelete = (entryId) => {
+            setModal({
+                show: true,
+                title: "Confirm Deletion",
+                message: "Are you sure you want to delete this Outward Challan? This action cannot be undone and will affect stock levels.",
+                showConfirmButton: true,
+                onConfirm: async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/outward-challans/${entryId}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        }
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: "Outward Challan deleted successfully!", 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        fetchRecentEntries(); // Re-fetch recent entries
+                        fetchInitialData(); // Re-fetch items to update stock
+                    } catch (error) {
+                        console.error("Error deleting outward challan entry:", error);
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete entry: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                    }
+                },
+                onClose: () => setModal({ ...modal, show: false })
+            });
+        };
+
+        const handlePrint = (entry) => {
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Outward Challan - ${entry.challan_no}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; }
+                        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                        .document-title { font-size: 18px; color: #666; }
+                        .details-section { margin: 20px 0; }
+                        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+                        .detail-item { padding: 5px 0; }
+                        .detail-label { font-weight: bold; display: inline-block; width: 120px; }
+                        .items-section { margin: 20px 0; }
+                        .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                        .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        .items-table th { background-color: #f5f5f5; font-weight: bold; }
+                        .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+                        @media print {
+                            body { margin: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="company-name">Flour Mill ERP</div>
+                        <div class="document-title">Outward Challan / Dispatch Note</div>
+                    </div>
+                    
+                    <div class="details-section">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Challan No:</span>
+                                <span>${entry.challan_no}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Challan Date:</span>
+                                <span>${entry.challan_date ? new Date(entry.challan_date).toLocaleDateString() : 'N/A'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Party:</span>
+                                <span>${entry.party_name}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Transport:</span>
+                                <span>${entry.transport || 'N/A'}</span>
+                            </div>
+                            ${entry.lr_no ? `
+                            <div class="detail-item">
+                                <span class="detail-label">LR No:</span>
+                                <span>${entry.lr_no}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <div class="items-section">
+                        <h3>Items Dispatched</h3>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Item Description</th>
+                                    <th>Category</th>
+                                    <th>UOM</th>
+                                    <th>Quantity</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${entry.items && entry.items.length > 0 ? 
+                                    entry.items.map(item => `
+                                        <tr>
+                                            <td>${item.item_description}</td>
+                                            <td>${item.category_name || '-'}</td>
+                                            <td>${item.value_of_goods_uom}</td>
+                                            <td>${item.quantity}</td>
+                                            <td>${item.remark || '-'}</td>
+                                        </tr>
+                                    `).join('') : 
+                                    '<tr><td colspan="5" style="text-align: center;">No items recorded</td></tr>'
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    ${entry.remark ? `
+                    <div style="margin-top: 20px;">
+                        <strong>General Remarks:</strong>
+                        <p>${entry.remark}</p>
+                    </div>
+                    ` : ''}
+
+                    <div class="footer">
+                        <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                        <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(printContent);
+            printWindow.document.close();
         };
 
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
-                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Outward Challan / Dispatch Note</h2>
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    {editingEntry ? 'Edit Outward Challan' : 'Outward Challan / Dispatch Note'}
+                </h2>
                 
                 {/* Info Banner */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className={`border rounded-lg p-4 mb-6 ${editingEntry ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'}`}>
                     <div className="flex items-center">
-                        <div className="text-blue-600 mr-3">🚚</div>
+                        <div className={`mr-3 ${editingEntry ? 'text-yellow-600' : 'text-blue-600'}`}>
+                            {editingEntry ? '✏️' : '🚚'}
+                        </div>
                         <div>
-                            <h4 className="font-semibold text-blue-800">Item Selection Process</h4>
-                            <p className="text-blue-700 text-sm">
-                                First select a category, then choose the specific item from that category. Stock availability will be validated before dispatch.
+                            <h4 className={`font-semibold ${editingEntry ? 'text-yellow-800' : 'text-blue-800'}`}>
+                                {editingEntry ? 'Editing Outward Challan' : 'Item Selection Process'}
+                            </h4>
+                            <p className={`text-sm ${editingEntry ? 'text-yellow-700' : 'text-blue-700'}`}>
+                                {editingEntry ? 
+                                    'You are editing an existing outward challan. Changes will update stock levels accordingly.' :
+                                    'First select a category, then choose the specific item from that category. Stock availability will be validated before dispatch.'
+                                }
                             </p>
                         </div>
                     </div>
@@ -2643,7 +3942,14 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                             </Button>
                         </div>
                         <InputField label="Challan No" id="challanNo" value={challanNo} onChange={(e) => setChallanNo(e.target.value)} required={true} />
-                        <InputField label="Challan Date" id="challanDate" type="date" value={challanDate} onChange={(e) => setChallanDate(e.target.value)} required={true} />
+                        <InputField 
+                            label="Challan Date" 
+                            id="challanDate" 
+                            type="date" 
+                            value={challanDate} 
+                            onChange={(e) => setChallanDate(e.target.value)} 
+                            required={true}
+                        />
                         <InputField label="Transport" id="transport" value={transport} onChange={(e) => setTransport(e.target.value)} placeholder="e.g., Roadways" />
                         <InputField label="L/R No." id="lrNo" value={lrNo} onChange={(e) => setLrNo(e.target.value)} />
                         <InputField label="Remark (Header)" id="headerRemark" value={remark} onChange={(e) => setRemark(e.target.value)} className="col-span-full" />
@@ -2651,12 +3957,10 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
 
                     <h3 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-300 pb-2">Items to Dispatch</h3>
                     {isLoading ? <LoadingSpinner /> : (
-                        outwardItems.map((item, index) => {
-                            const filteredItems = getFilteredItems(item.categoryId);
-                            const selectedItem = items.find(i => i.value === Number(item.itemId));
-                            
-                            return (
-                                <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-2 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                        outwardItems.map((item, index) => (
+                            <div key={index} className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                                {/* First Row - Category and Item Selection */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 mb-4">
                                     <SelectField 
                                         label="Category" 
                                         id={`category-${index}`} 
@@ -2666,64 +3970,181 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                                         required={true} 
                                     />
                                     <SelectField 
-                                        label={`Item ${selectedItem ? `(Stock: ${selectedItem.stock})` : ''}`}
-                                        id={`outwardItem-${index}`} 
+                                        label={`Item ${item.categoryId ? `(Stock: ${items.find(i => i.value === Number(item.itemId))?.stock || 0})` : ''}`}
+                                        id={`item-${index}`} 
                                         value={item.itemId} 
                                         onChange={(e) => handleItemChange(index, 'itemId', e.target.value)} 
-                                        options={filteredItems} 
-                                        required={true} 
+                                        options={getFilteredItems(item.categoryId)} 
+                                        required={true}
                                         disabled={!item.categoryId}
-                                        className={!item.categoryId ? 'opacity-50' : ''}
                                     />
+                                </div>
+                                
+                                {/* Second Row - UOM and Quantity */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 mb-4">
                                     <InputField 
                                         label="UOM" 
                                         id={`uom-${index}`} 
                                         value={item.valueOfGoodsUom} 
                                         onChange={(e) => handleItemChange(index, 'valueOfGoodsUom', e.target.value)} 
-                                        placeholder="e.g., PC, KG" 
+                                        placeholder="e.g., KG, PC, MT" 
                                         required={true}
                                     />
                                     <div>
                                         <InputField 
-                                            label={`Quantity ${selectedItem ? `(Available: ${selectedItem.stock})` : ''}`}
+                                            label={`Quantity ${item.itemId ? `(Available: ${items.find(i => i.value === Number(item.itemId))?.stock || 0})` : ''}`}
                                             id={`qty-${index}`} 
                                             type="number" 
                                             value={item.qty} 
                                             onChange={(e) => handleItemChange(index, 'qty', e.target.value)} 
                                             required={true}
-                                            className={selectedItem && Number(item.qty) > selectedItem.stock ? 'border-red-500 bg-red-50' : ''}
+                                            className={!editingEntry && item.itemId && Number(item.qty) > (items.find(i => i.value === Number(item.itemId))?.stock || 0) ? 'border-red-500 bg-red-50' : ''}
                                         />
-                                        {selectedItem && Number(item.qty) > selectedItem.stock && (
+                                        {!editingEntry && item.itemId && Number(item.qty) > (items.find(i => i.value === Number(item.itemId))?.stock || 0) && (
                                             <p className="text-red-500 text-xs mt-1">⚠️ Exceeds available stock</p>
                                         )}
                                     </div>
-                                    <div className="flex items-end justify-center">
-                                        <Button onClick={() => removeItemRow(index)} className="bg-red-500 hover:bg-red-700 text-white py-1 px-2 text-sm">
-                                            Remove
+                                </div>
+                                
+                                {/* Third Row - Item Remark and Remove Button */}
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-x-4 gap-y-2 items-end">
+                                    <div className="md:col-span-10">
+                                        <InputField 
+                                            label="Item Remark" 
+                                            id={`itemRemark-${index}`} 
+                                            value={item.remark} 
+                                            onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
+                                            placeholder="Optional notes for this item"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2 flex justify-end">
+                                        <Button 
+                                            onClick={() => removeItemRow(index)} 
+                                            className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2 h-10"
+                                            type="button"
+                                        >
+                                            <span>🗑️</span>
+                                            <span className="hidden md:inline">Remove</span>
                                         </Button>
                                     </div>
-                                    <InputField 
-                                        label="Item Remark" 
-                                        id={`itemRemark-${index}`} 
-                                        value={item.remark} 
-                                        onChange={(e) => handleItemChange(index, 'remark', e.target.value)} 
-                                        className="col-span-full" 
-                                        placeholder="Optional notes for this item"
-                                    />
                                 </div>
-                            );
-                        })
+                            </div>
+                        ))
                     )}
 
                     <div className="flex justify-end mb-6">
-                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">Add Another Item</Button>
+                        <Button onClick={addItemRow} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">
+                            Add Another Item
+                        </Button>
                     </div>
 
-                    <div className="flex justify-end space-x-4">
-                        <Button type="submit">Submit Outward Challan</Button>
-                        <Button onClick={resetForm} className="bg-gray-500 hover:bg-gray-600 text-white">Clear Form</Button>
+                    {/* Improved Form Action Buttons */}
+                    <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
+                        <Button 
+                            type="submit"
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🚚</span>
+                            {editingEntry ? 'Update Outward Challan' : 'Submit Outward Challan'}
+                        </Button>
+                        <Button 
+                            onClick={resetForm} 
+                            type="button"
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <span>🔄</span>
+                            {editingEntry ? 'Cancel Edit' : 'Clear Form'}
+                        </Button>
                     </div>
                 </form>
+
+                {/* Recent Entries Section */}
+                <div className="mt-12 border-t-2 border-gray-200 pt-8">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-6 border-b-2 border-blue-400 pb-2">
+                        Recent Outward Challans (Last 5)
+                    </h3>
+                    
+                    {recentEntries.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-4xl mb-4">🚚</div>
+                            <p>No outward challans recorded yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {recentEntries.map((entry) => (
+                                <div key={entry.id} className="bg-gray-50 border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Challan No:</span>
+                                                <p className="text-lg font-bold text-purple-700">{entry.challan_no}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Challan Date:</span>
+                                                <p className="text-gray-800">{entry.challan_date ? new Date(entry.challan_date).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Party:</span>
+                                                <p className="text-gray-800">{entry.party_name}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-sm font-semibold text-gray-600">Transport:</span>
+                                                <p className="text-gray-800">{entry.transport || 'N/A'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex space-x-2 ml-4">
+                                            <Button 
+                                                onClick={() => handleEdit(entry)} 
+                                                className="bg-blue-500 hover:bg-blue-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                ✏️ Edit
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handlePrint(entry)} 
+                                                className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🖨️ Print
+                                            </Button>
+                                            <Button 
+                                                onClick={() => handleDelete(entry.id)} 
+                                                className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded"
+                                            >
+                                                🗑️ Delete
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="border-l-4 border-purple-500 pl-4">
+                                        <h4 className="font-semibold text-purple-700 mb-2">🚚 Items Dispatched</h4>
+                                        {entry.items && entry.items.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {entry.items.map((item, idx) => (
+                                                    <div key={idx} className="text-sm text-gray-700">
+                                                        <strong>{item.item_description}</strong> - {item.quantity} {item.value_of_goods_uom}
+                                                        {item.remark && <span className="text-gray-500"> ({item.remark})</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No items recorded</p>
+                                        )}
+                                    </div>
+                                    
+                                    {(entry.lr_no || entry.remark) && (
+                                        <div className="mt-4 pt-4 border-t border-gray-300 text-sm text-gray-600">
+                                            {entry.lr_no && <span className="mr-4"><strong>LR No:</strong> {entry.lr_no}</span>}
+                                            {entry.remark && <p className="mt-2"><strong>General Remark:</strong> {entry.remark}</p>}
+                                        </div>
+                                    )}
+                                    
+                                    <div className="mt-4 pt-4 border-t border-gray-300 text-xs text-gray-500">
+                                        Created: {new Date(entry.created_at).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 <Modal
                     show={modal.show}
@@ -2734,11 +4155,14 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
                     showConfirmButton={modal.showConfirmButton}
                 />
 
-                {/* New Party Ad-hoc Modal */}
+                {/* New Party Modal */}
                 <Modal
                     show={showNewPartyModal}
                     title="Create New Party"
-                    onClose={() => { setShowNewPartyModal(false); resetNewPartyForm(); }}
+                    onClose={() => {
+                        setShowNewPartyModal(false);
+                        resetNewPartyForm();
+                    }}
                     showConfirmButton={true}
                     confirmText="Create Party"
                     onConfirm={handleCreateNewParty}
@@ -2755,7 +4179,6 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
 
-// ...existing code...
 
     // New Stock Control Page Component
     const StockControlPage = () => {
@@ -3301,452 +4724,975 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
         );
     };
     // Add this new component after DispatchOverviewPage
+    // Replace the existing RecordedEntriesPage component with this enhanced version
+
     const RecordedEntriesPage = () => {
         const { API_BASE_URL } = useContext(AppContext);
-        const [activeTab, setActiveTab] = useState('items');
+        const [activeTab, setActiveTab] = useState('gateInward');
+        const [entries, setEntries] = useState([]);
+        const [filteredEntries, setFilteredEntries] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
+        
+        // Filter and sort states
+        const [searchTerm, setSearchTerm] = useState('');
+        const [dateFrom, setDateFrom] = useState('');
+        const [dateTo, setDateTo] = useState('');
+        const [sortBy, setSortBy] = useState('created_at');
+        const [sortOrder, setSortOrder] = useState('DESC');
+        const [supplierFilter, setSupplierFilter] = useState('');
+        const [departmentFilter, setDepartmentFilter] = useState('');
+        const [partyFilter, setPartyFilter] = useState('');
+        
+        // Available options for filters
+        const [suppliers, setSuppliers] = useState([]);
+        const [parties, setParties] = useState([]);
+        const [departments] = useState(['Production', 'Quality Control', 'Packaging', 'Maintenance', 'Administration']);
+
         const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
 
-        // Data states for different entry types
-        const [itemEntries, setItemEntries] = useState([]);
-        const [gateInwardEntries, setGateInwardEntries] = useState([]);
-        const [issueNoteEntries, setIssueNoteEntries] = useState([]);
-        const [inwardInternalEntries, setInwardInternalEntries] = useState([]);
-        const [outwardChallanEntries, setOutwardChallanEntries] = useState([]);
+        // Tab configuration
+        const tabs = [
+            { id: 'gateInward', label: 'Gate Inward', endpoint: 'gate-inwards', icon: '📥' },
+            { id: 'issueNoteInternal', label: 'Issue Note (Internal)', endpoint: 'issue-notes-internal', icon: '📤' },
+            { id: 'inwardInternal', label: 'Inward (Internal)', endpoint: 'inward-internals', icon: '🔄' },
+            { id: 'outwardChallan', label: 'Outward Challan', endpoint: 'outward-challans', icon: '🚚' }
+        ];
 
-        // Fetch functions for each entry type
-        const fetchItemEntries = async () => {
+        // Fetch filter options
+        const fetchFilterOptions = async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/items`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                setItemEntries(data);
+                const [partiesResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/parties`)
+                ]);
+                
+                if (partiesResponse.ok) {
+                    const partiesData = await partiesResponse.json();
+                    setParties(partiesData);
+                    setSuppliers(partiesData); // Suppliers are also parties
+                }
             } catch (error) {
-                console.error("Error fetching item entries:", error);
+                console.error('Error fetching filter options:', error);
             }
         };
 
-        const fetchGateInwardEntries = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/gate-inwards`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                setGateInwardEntries(data);
-            } catch (error) {
-                console.error("Error fetching gate inward entries:", error);
-            }
-        };
-
-        const fetchIssueNoteEntries = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/issue-notes-internal`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                setIssueNoteEntries(data);
-            } catch (error) {
-                console.error("Error fetching issue note entries:", error);
-            }
-        };
-
-        const fetchInwardInternalEntries = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/inward-internals`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                setInwardInternalEntries(data);
-            } catch (error) {
-                console.error("Error fetching inward internal entries:", error);
-            }
-        };
-
-        const fetchOutwardChallanEntries = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/outward-challans`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                setOutwardChallanEntries(data);
-            } catch (error) {
-                console.error("Error fetching outward challan entries:", error);
-            }
-        };
-
-        const fetchAllEntries = async () => {
+        // Fetch entries based on active tab
+        const fetchEntries = async () => {
             setIsLoading(true);
             try {
-                await Promise.all([
-                    fetchItemEntries(),
-                    fetchGateInwardEntries(),
-                    fetchIssueNoteEntries(),
-                    fetchInwardInternalEntries(),
-                    fetchOutwardChallanEntries()
-                ]);
+                const activeTabConfig = tabs.find(tab => tab.id === activeTab);
+                const response = await fetch(`${API_BASE_URL}/${activeTabConfig.endpoint}?limit=100&orderBy=${sortBy}&order=${sortOrder}`);
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                setEntries(data);
+                setFilteredEntries(data);
             } catch (error) {
-                console.error("Error fetching all entries:", error);
-                setModal({ 
-                    show: true, 
-                    title: "Error", 
-                    message: "Failed to load recorded entries. Please try again.", 
-                    onClose: () => setModal({ ...modal, show: false }) 
+                console.error(`Error fetching ${activeTab} entries:`, error);
+                setModal({
+                    show: true,
+                    title: "Error",
+                    message: `Failed to load ${activeTab} entries. Please try again.`,
+                    onClose: () => setModal({ ...modal, show: false })
                 });
             } finally {
                 setIsLoading(false);
             }
         };
 
+        // Apply filters and search
+        const applyFilters = () => {
+            let filtered = [...entries];
+
+            // Search filter
+            if (searchTerm) {
+                filtered = filtered.filter(entry => {
+                    const searchFields = getSearchFields(entry, activeTab);
+                    return searchFields.some(field => 
+                        field && field.toString().toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                });
+            }
+
+            // Date range filter
+            if (dateFrom || dateTo) {
+                filtered = filtered.filter(entry => {
+                    const entryDate = getEntryDate(entry, activeTab);
+                    if (!entryDate) return true;
+                    
+                    const date = new Date(entryDate);
+                    const fromDate = dateFrom ? new Date(dateFrom) : null;
+                    const toDate = dateTo ? new Date(dateTo) : null;
+                    
+                    if (fromDate && date < fromDate) return false;
+                    if (toDate && date > toDate) return false;
+                    return true;
+                });
+            }
+
+            // Supplier/Party filter
+            if (supplierFilter && activeTab === 'gateInward') {
+                filtered = filtered.filter(entry => entry.supplier_id === parseInt(supplierFilter));
+            }
+            if (partyFilter && activeTab === 'outwardChallan') {
+                filtered = filtered.filter(entry => entry.party_id === parseInt(partyFilter));
+            }
+
+            // Department filter
+            if (departmentFilter && (activeTab === 'issueNoteInternal' || activeTab === 'inwardInternal')) {
+                filtered = filtered.filter(entry => entry.department === departmentFilter);
+            }
+
+            setFilteredEntries(filtered);
+        };
+
+        // Helper functions
+        const getSearchFields = (entry, tabType) => {
+            switch (tabType) {
+                case 'gateInward':
+                    return [entry.grn_number, entry.bill_no, entry.supplier_name, entry.payment_terms];
+                case 'issueNoteInternal':
+                    return [entry.issue_no, entry.department, entry.issued_by];
+                case 'inwardInternal':
+                    return [entry.receipt_no, entry.department, entry.received_by];
+                case 'outwardChallan':
+                    return [entry.challan_no, entry.party_name, entry.transport, entry.lr_no];
+                default:
+                    return [];
+            }
+        };
+
+        const getEntryDate = (entry, tabType) => {
+            switch (tabType) {
+                case 'gateInward':
+                    return entry.grn_date;
+                case 'issueNoteInternal':
+                    return entry.issue_date;
+                case 'inwardInternal':
+                    return entry.received_date;
+                case 'outwardChallan':
+                    return entry.challan_date;
+                default:
+                    return entry.created_at;
+            }
+        };
+
+        // Print functionality
+        const handlePrint = (entry) => {
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            const printContent = generatePrintContent(entry, activeTab);
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        };
+
+        const generatePrintContent = (entry, tabType) => {
+            const commonStyles = `
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                    .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+                    .document-title { font-size: 18px; color: #666; }
+                    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+                    .detail-item { padding: 5px 0; }
+                    .detail-label { font-weight: bold; display: inline-block; width: 120px; }
+                    .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                    .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    .items-table th { background-color: #f5f5f5; font-weight: bold; }
+                    .total-row { background-color: #e8f4f8; font-weight: bold; }
+                    .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+                    @media print { body { margin: 0; } .no-print { display: none; } }
+                </style>
+            `;
+
+            switch (tabType) {
+                case 'gateInward':
+                    return `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Gate Inward Receipt - ${entry.grn_number}</title>
+                            ${commonStyles}
+                        </head>
+                        <body>
+                            <div class="header">
+                                <div class="company-name">Flour Mill ERP</div>
+                                <div class="document-title">Gate Inward Receipt</div>
+                            </div>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">GRN Number:</span>
+                                    <span>${entry.grn_number}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">GRN Date:</span>
+                                    <span>${entry.grn_date ? new Date(entry.grn_date).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Supplier:</span>
+                                    <span>${entry.supplier_name}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Payment Terms:</span>
+                                    <span>${entry.payment_terms || 'N/A'}</span>
+                                </div>
+                                ${entry.bill_no ? `
+                                <div class="detail-item">
+                                    <span class="detail-label">Bill Number:</span>
+                                    <span>${entry.bill_no}</span>
+                                </div>
+                                ` : ''}
+                                ${entry.bill_date ? `
+                                <div class="detail-item">
+                                    <span class="detail-label">Bill Date:</span>
+                                    <span>${new Date(entry.bill_date).toLocaleDateString()}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="items-section">
+                                <h3>Items Received</h3>
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>UOM</th>
+                                            <th>Quantity</th>
+                                            <th>Unit Rate</th>
+                                            <th>Amount</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${entry.items && entry.items.length > 0 ? 
+                                            entry.items.map(item => `
+                                                <tr>
+                                                    <td>${item.item_description}</td>
+                                                    <td>${item.uom}</td>
+                                                    <td>${item.quantity}</td>
+                                                    <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                                    <td>₹${parseFloat(item.amount).toFixed(2)}</td>
+                                                    <td>${item.remark || '-'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="6" style="text-align: center;">No items recorded</td></tr>'
+                                        }
+                                        <tr class="total-row">
+                                            <td colspan="4" style="text-align: right;"><strong>Total Amount:</strong></td>
+                                            <td><strong>₹${entry.items ? entry.items.reduce((total, item) => total + parseFloat(item.amount || 0), 0).toFixed(2) : '0.00'}</strong></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="footer">
+                                <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                                <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                case 'issueNoteInternal':
+                    return `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Issue Note Internal - ${entry.issue_no}</title>
+                            ${commonStyles}
+                        </head>
+                        <body>
+                            <div class="header">
+                                <div class="company-name">Flour Mill ERP</div>
+                                <div class="document-title">Internal Issue Note</div>
+                            </div>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Issue No:</span>
+                                    <span>${entry.issue_no}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Issue Date:</span>
+                                    <span>${entry.issue_date ? new Date(entry.issue_date).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Department:</span>
+                                    <span>${entry.department}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Issued By:</span>
+                                    <span>${entry.issued_by}</span>
+                                </div>
+                            </div>
+                            <div class="items-section">
+                                <h3>Items Issued</h3>
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>UOM</th>
+                                            <th>Quantity</th>
+                                            <th>Unit Rate</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${entry.items && entry.items.length > 0 ? 
+                                            entry.items.map(item => `
+                                                <tr>
+                                                    <td>${item.item_description}</td>
+                                                    <td>${item.uom}</td>
+                                                    <td>${item.quantity}</td>
+                                                    <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                                    <td>${item.remark || '-'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="5" style="text-align: center;">No items recorded</td></tr>'
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="footer">
+                                <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                                <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                case 'inwardInternal':
+                    return `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Internal Inward Receipt - ${entry.receipt_no}</title>
+                            ${commonStyles}
+                        </head>
+                        <body>
+                            <div class="header">
+                                <div class="company-name">Flour Mill ERP</div>
+                                <div class="document-title">Internal Inward Receipt</div>
+                            </div>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Receipt No:</span>
+                                    <span>${entry.receipt_no}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Received Date:</span>
+                                    <span>${entry.received_date ? new Date(entry.received_date).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Department:</span>
+                                    <span>${entry.department}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Received By:</span>
+                                    <span>${entry.received_by}</span>
+                                </div>
+                            </div>
+                            <div class="items-section">
+                                <h3>Finished Goods Received</h3>
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>UOM</th>
+                                            <th>Quantity</th>
+                                            <th>Unit Rate</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${entry.finishGoods && entry.finishGoods.length > 0 ? 
+                                            entry.finishGoods.map(item => `
+                                                <tr>
+                                                    <td>${item.item_description}</td>
+                                                    <td>${item.uom}</td>
+                                                    <td>${item.quantity}</td>
+                                                    <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                                    <td>${item.remark || '-'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="5" style="text-align: center;">No finished goods recorded</td></tr>'
+                                        }
+                                    </tbody>
+                                </table>
+                                
+                                <h3>Materials Used</h3>
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>UOM</th>
+                                            <th>Quantity</th>
+                                            <th>Unit Rate</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${entry.materialsUsed && entry.materialsUsed.length > 0 ? 
+                                            entry.materialsUsed.map(item => `
+                                                <tr>
+                                                    <td>${item.item_description}</td>
+                                                    <td>${item.uom}</td>
+                                                    <td>${item.quantity}</td>
+                                                    <td>₹${parseFloat(item.unit_rate).toFixed(2)}</td>
+                                                    <td>${item.remark || '-'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="5" style="text-align: center;">No materials used recorded</td></tr>'
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="footer">
+                                <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                                <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                case 'outwardChallan':
+                    return `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Outward Challan - ${entry.challan_no}</title>
+                            ${commonStyles}
+                        </head>
+                        <body>
+                            <div class="header">
+                                <div class="company-name">Flour Mill ERP</div>
+                                <div class="document-title">Outward Challan / Dispatch Note</div>
+                            </div>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Challan No:</span>
+                                    <span>${entry.challan_no}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Challan Date:</span>
+                                    <span>${entry.challan_date ? new Date(entry.challan_date).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Party:</span>
+                                    <span>${entry.party_name}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Transport:</span>
+                                    <span>${entry.transport || 'N/A'}</span>
+                                </div>
+                                ${entry.lr_no ? `
+                                <div class="detail-item">
+                                    <span class="detail-label">LR No:</span>
+                                    <span>${entry.lr_no}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="items-section">
+                                <h3>Items Dispatched</h3>
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item Description</th>
+                                            <th>UOM</th>
+                                            <th>Quantity</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${entry.items && entry.items.length > 0 ? 
+                                            entry.items.map(item => `
+                                                <tr>
+                                                    <td>${item.item_description}</td>
+                                                    <td>${item.value_of_goods_uom}</td>
+                                                    <td>${item.quantity}</td>
+                                                    <td>${item.remark || '-'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="4" style="text-align: center;">No items recorded</td></tr>'
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            ${entry.remark ? `
+                            <div style="margin-top: 20px;">
+                                <strong>General Remarks:</strong>
+                                <p>${entry.remark}</p>
+                            </div>
+                            ` : ''}
+                            <div class="footer">
+                                <p>Generated on ${new Date().toLocaleString()} | Flour Mill ERP System</p>
+                                <button class="no-print" onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">Print Document</button>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                default:
+                    return '<html><body>Print format not available for this entry type.</body></html>';
+            }
+        };
+
+        // Delete functionality
+        const handleDelete = (entryId) => {
+            const activeTabConfig = tabs.find(tab => tab.id === activeTab);
+            setModal({
+                show: true,
+                title: "Confirm Deletion",
+                message: `Are you sure you want to delete this ${activeTabConfig.label} entry? This action cannot be undone and may affect stock levels.`,
+                showConfirmButton: true,
+                onConfirm: async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/${activeTabConfig.endpoint}/${entryId}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        }
+                        setModal({ 
+                            show: true, 
+                            title: "Success", 
+                            message: `${activeTabConfig.label} entry deleted successfully!`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                        fetchEntries(); // Refresh the list
+                    } catch (error) {
+                        console.error(`Error deleting ${activeTab} entry:`, error);
+                        setModal({ 
+                            show: true, 
+                            title: "Error", 
+                            message: `Failed to delete entry: ${error.message}`, 
+                            onClose: () => setModal({ ...modal, show: false }) 
+                        });
+                    }
+                },
+                onClose: () => setModal({ ...modal, show: false })
+            });
+        };
+
+        // Clear all filters
+        const clearFilters = () => {
+            setSearchTerm('');
+            setDateFrom('');
+            setDateTo('');
+            setSortBy('created_at');
+            setSortOrder('DESC');
+            setSupplierFilter('');
+            setDepartmentFilter('');
+            setPartyFilter('');
+            setFilteredEntries(entries);
+        };
+
+        // Effects
         useEffect(() => {
-            fetchAllEntries();
+            fetchFilterOptions();
         }, []);
 
-        const TabButton = ({ tabKey, label, icon, count }) => (
-            <button
-                onClick={() => setActiveTab(tabKey)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                    activeTab === tabKey 
-                        ? 'bg-blue-500 text-white shadow-md' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-            >
-                <span className="text-lg">{icon}</span>
-                <span>{label}</span>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                    activeTab === tabKey 
-                        ? 'bg-blue-400 text-white' 
-                        : 'bg-gray-300 text-gray-600'
-                }`}>
-                    {count}
-                </span>
-            </button>
-        );
+        useEffect(() => {
+            fetchEntries();
+        }, [activeTab, sortBy, sortOrder]);
 
-        const renderItemsTable = () => (
-            <div className="overflow-x-auto rounded-lg shadow-md">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-blue-100">
-                        <tr>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Code</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Item Name</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Category</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Subcategory</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Description</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Stock</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Unit Rate</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Created Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {itemEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan="8" className="py-4 px-4 text-center text-gray-500">No item entries recorded.</td>
-                            </tr>
-                        ) : (
-                            itemEntries.map((item) => (
-                                <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{item.item_code}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{item.item_name}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{item.category_name}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{item.subcategory_name}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{item.full_description}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{item.stock}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">₹{parseFloat(item.unit_rate).toFixed(2)}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(item.created_at).toLocaleDateString()}</td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        );
+        useEffect(() => {
+            applyFilters();
+        }, [entries, searchTerm, dateFrom, dateTo, supplierFilter, departmentFilter, partyFilter]);
 
-        const renderGateInwardTable = () => (
-            <div className="overflow-x-auto rounded-lg shadow-md">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-green-100">
-                        <tr>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Bill No</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Bill Date</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Supplier</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">GRN#</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Payment Terms</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Items Received</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Total Amount</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Entry Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {gateInwardEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan="8" className="py-4 px-4 text-center text-gray-500">No gate inward entries recorded.</td>
-                            </tr>
-                        ) : (
-                            gateInwardEntries.map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{entry.bill_no}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.bill_date).toLocaleDateString()}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.supplier_name}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.grn_number}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.payment_terms}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        {entry.items && entry.items.map((item, idx) => (
-                                            <div key={idx} className="text-xs mb-1">
-                                                {item.item_description} ({item.quantity} {item.uom})
+        // Render entry cards based on type
+        const renderEntryCard = (entry, index) => {
+            switch (activeTab) {
+                case 'gateInward':
+                    return (
+                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">GRN Number:</span>
+                                        <p className="text-lg font-bold text-blue-700">{entry.grn_number}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">GRN Date:</span>
+                                        <p className="text-gray-800">{entry.grn_date ? new Date(entry.grn_date).toLocaleDateString() : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Supplier:</span>
+                                        <p className="text-gray-800">{entry.supplier_name}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Total Amount:</span>
+                                        <p className="text-gray-800 font-bold">₹{entry.items ? entry.items.reduce((total, item) => total + parseFloat(item.amount || 0), 0).toFixed(2) : '0.00'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2 ml-4">
+                                    <Button onClick={() => handlePrint(entry)} className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded">🖨️ Print</Button>
+                                    <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded">🗑️ Delete</Button>
+                                </div>
+                            </div>
+                            
+                            <div className="border-l-4 border-blue-500 pl-4">
+                                <h4 className="font-semibold text-blue-700 mb-2">📦 Items Received</h4>
+                                {entry.items && entry.items.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {entry.items.slice(0, 3).map((item, idx) => (
+                                            <div key={idx} className="text-sm text-gray-700">
+                                                <strong>{item.item_description}</strong> - {item.quantity} {item.uom} @ ₹{parseFloat(item.unit_rate).toFixed(2)}
                                             </div>
                                         ))}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        ₹{entry.items ? entry.items.reduce((total, item) => total + parseFloat(item.amount || 0), 0).toFixed(2) : '0.00'}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.created_at).toLocaleDateString()}</td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        );
+                                        {entry.items.length > 3 && (
+                                            <p className="text-xs text-gray-500">+ {entry.items.length - 3} more items</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No items recorded</p>
+                                )}
+                            </div>
+                            
+                            {(entry.bill_no || entry.payment_terms) && (
+                                <div className="mt-4 pt-4 border-t border-gray-300 text-sm text-gray-600">
+                                    {entry.bill_no && <span className="mr-4"><strong>Bill#:</strong> {entry.bill_no}</span>}
+                                    {entry.payment_terms && <span><strong>Payment:</strong> {entry.payment_terms}</span>}
+                                </div>
+                            )}
+                        </div>
+                    );
 
-        const renderIssueNoteTable = () => (
-            <div className="overflow-x-auto rounded-lg shadow-md">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-orange-100">
-                        <tr>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Issue No</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Issue Date</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Department</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Issued By</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Items Issued</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Total Value</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Entry Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {issueNoteEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan="7" className="py-4 px-4 text-center text-gray-500">No issue note entries recorded.</td>
-                            </tr>
-                        ) : (
-                            issueNoteEntries.map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{entry.issue_no}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.issue_date).toLocaleDateString()}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.department}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.issued_by}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        {entry.items && entry.items.map((item, idx) => (
-                                            <div key={idx} className="text-xs mb-1">
-                                                {item.item_description} ({item.quantity} {item.uom})
+                case 'issueNoteInternal':
+                    return (
+                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Issue No:</span>
+                                        <p className="text-lg font-bold text-red-700">{entry.issue_no}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Issue Date:</span>
+                                        <p className="text-gray-800">{entry.issue_date ? new Date(entry.issue_date).toLocaleDateString() : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Department:</span>
+                                        <p className="text-gray-800">{entry.department}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Issued By:</span>
+                                        <p className="text-gray-800">{entry.issued_by}</p>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2 ml-4">
+                                    <Button onClick={() => handlePrint(entry)} className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded">🖨️ Print</Button>
+                                    <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded">🗑️ Delete</Button>
+                                </div>
+                            </div>
+                            
+                            <div className="border-l-4 border-red-500 pl-4">
+                                <h4 className="font-semibold text-red-700 mb-2">📤 Items Issued</h4>
+                                {entry.items && entry.items.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {entry.items.slice(0, 3).map((item, idx) => (
+                                            <div key={idx} className="text-sm text-gray-700">
+                                                <strong>{item.item_description}</strong> - {item.quantity} {item.uom}
                                             </div>
                                         ))}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        ₹{entry.items ? entry.items.reduce((total, item) => total + (parseFloat(item.unit_rate || 0) * parseFloat(item.quantity || 0)), 0).toFixed(2) : '0.00'}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.created_at).toLocaleDateString()}</td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        );
+                                        {entry.items.length > 3 && (
+                                            <p className="text-xs text-gray-500">+ {entry.items.length - 3} more items</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No items recorded</p>
+                                )}
+                            </div>
+                        </div>
+                    );
 
-        const renderInwardInternalTable = () => (
-            <div className="overflow-x-auto rounded-lg shadow-md">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-purple-100">
-                        <tr>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Receipt No</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Received Date</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Department</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Received By</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Finished Goods</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Materials Used</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Entry Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {inwardInternalEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan="7" className="py-4 px-4 text-center text-gray-500">No inward internal entries recorded.</td>
-                            </tr>
-                        ) : (
-                            inwardInternalEntries.map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{entry.receipt_no}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.received_date).toLocaleDateString()}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.department}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.received_by}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        {entry.finishGoods && entry.finishGoods.map((item, idx) => (
-                                            <div key={idx} className="text-xs mb-1 text-green-700">
-                                                +{item.item_description} ({item.quantity} {item.uom})
-                                            </div>
-                                        ))}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        {entry.materialUsed && entry.materialUsed.map((item, idx) => (
-                                            <div key={idx} className="text-xs mb-1 text-red-700">
-                                                -{item.item_description} ({item.quantity} {item.uom})
-                                            </div>
-                                        ))}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.created_at).toLocaleDateString()}</td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        );
+                case 'inwardInternal':
+                    return (
+                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Receipt No:</span>
+                                        <p className="text-lg font-bold text-green-700">{entry.receipt_no}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Received Date:</span>
+                                        <p className="text-gray-800">{entry.received_date ? new Date(entry.received_date).toLocaleDateString() : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Department:</span>
+                                        <p className="text-gray-800">{entry.department}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Received By:</span>
+                                        <p className="text-gray-800">{entry.received_by}</p>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2 ml-4">
+                                    <Button onClick={() => handlePrint(entry)} className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded">🖨️ Print</Button>
+                                    <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded">🗑️ Delete</Button>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div className="border-l-4 border-green-500 pl-4">
+                                    <h4 className="font-semibold text-green-700 mb-2">✅ Finished Goods</h4>
+                                    {entry.finishGoods && entry.finishGoods.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {entry.finishGoods.slice(0, 2).map((item, idx) => (
+                                                <div key={idx} className="text-sm text-gray-700">
+                                                    <strong>{item.item_description}</strong> - {item.quantity} {item.uom}
+                                                </div>
+                                            ))}
+                                            {entry.finishGoods.length > 2 && (
+                                                <p className="text-xs text-gray-500">+ {entry.finishGoods.length - 2} more items</p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">No finished goods</p>
+                                    )}
+                                </div>
+                                
+                                <div className="border-l-4 border-orange-500 pl-4">
+                                    <h4 className="font-semibold text-orange-700 mb-2">🔧 Materials Used</h4>
+                                    {entry.materialsUsed && entry.materialsUsed.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {entry.materialsUsed.slice(0, 2).map((item, idx) => (
+                                                <div key={idx} className="text-sm text-gray-700">
+                                                    <strong>{item.item_description}</strong> - {item.quantity} {item.uom}
+                                                </div>
+                                            ))}
+                                            {entry.materialsUsed.length > 2 && (
+                                                <p className="text-xs text-gray-500">+ {entry.materialsUsed.length - 2} more items</p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">No materials used</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
 
-        const renderOutwardChallanTable = () => (
-            <div className="overflow-x-auto rounded-lg shadow-md">
-                <table className="min-w-full bg-white">
-                    <thead className="bg-red-100">
-                        <tr>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Challan No</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Challan Date</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Party</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Transport</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">L/R No</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Items Dispatched</th>
-                            <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Entry Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {outwardChallanEntries.length === 0 ? (
-                            <tr>
-                                <td colSpan="7" className="py-4 px-4 text-center text-gray-500">No outward challan entries recorded.</td>
-                            </tr>
-                        ) : (
-                            outwardChallanEntries.map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                    <td className="py-3 px-4 text-sm text-gray-800 font-medium">{entry.challan_no}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.challan_date).toLocaleDateString()}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.party_name}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.transport}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{entry.lr_no}</td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">
-                                        {entry.items && entry.items.map((item, idx) => (
-                                            <div key={idx} className="text-xs mb-1">
-                                                {item.item_description} ({item.quantity} {item.value_of_goods_uom})
+                case 'outwardChallan':
+                    return (
+                        <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-grow">
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Challan No:</span>
+                                        <p className="text-lg font-bold text-purple-700">{entry.challan_no}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Challan Date:</span>
+                                        <p className="text-gray-800">{entry.challan_date ? new Date(entry.challan_date).toLocaleDateString() : 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Party:</span>
+                                        <p className="text-gray-800">{entry.party_name}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-semibold text-gray-600">Transport:</span>
+                                        <p className="text-gray-800">{entry.transport || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2 ml-4">
+                                    <Button onClick={() => handlePrint(entry)} className="bg-green-500 hover:bg-green-600 text-white text-xs py-1 px-3 rounded">🖨️ Print</Button>
+                                    <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded">🗑️ Delete</Button>
+                                </div>
+                            </div>
+                            
+                            <div className="border-l-4 border-purple-500 pl-4">
+                                <h4 className="font-semibold text-purple-700 mb-2">🚚 Items Dispatched</h4>
+                                {entry.items && entry.items.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {entry.items.slice(0, 3).map((item, idx) => (
+                                            <div key={idx} className="text-sm text-gray-700">
+                                                <strong>{item.item_description}</strong> - {item.quantity} {item.value_of_goods_uom}
                                             </div>
                                         ))}
-                                    </td>
-                                    <td className="py-3 px-4 text-sm text-gray-800">{new Date(entry.created_at).toLocaleDateString()}</td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        );
+                                        {entry.items.length > 3 && (
+                                            <p className="text-xs text-gray-500">+ {entry.items.length - 3} more items</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No items recorded</p>
+                                )}
+                            </div>
+                            
+                            {(entry.lr_no || entry.remark) && (
+                                <div className="mt-4 pt-4 border-t border-gray-300 text-sm text-gray-600">
+                                    {entry.lr_no && <span className="mr-4"><strong>LR No:</strong> {entry.lr_no}</span>}
+                                    {entry.remark && <p className="mt-2"><strong>Remark:</strong> {entry.remark}</p>}
+                                </div>
+                            )}
+                        </div>
+                    );
+
+                default:
+                    return null;
+            }
+        };
 
         return (
             <div className="bg-white p-8 rounded-xl shadow-lg">
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">
+                    📋 Recorded Entries
+                </h2>
+
+                {/* Tab Navigation - Clickable Tabs Only */}
+                <div className="mb-8">
+                    <div className="border-b border-gray-200">
+                        <nav className="-mb-px flex space-x-8">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex items-center space-x-2 transition-colors duration-200 ${
+                                        activeTab === tab.id
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span className="text-lg">{tab.icon}</span>
+                                    <span>{tab.label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+                </div>
+
+                {/* Filters and Search */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <span className="mr-2">🔍</span>
+                        Advanced Filters & Search
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        {/* Search */}
+                        <InputField
+                            label="Search"
+                            id="search"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search entries..."
+                        />
+                        
+                        {/* Date Range */}
+                        <InputField
+                            label="Date From"
+                            id="dateFrom"
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            // max prop will be automatically set to today by InputField
+                        />
+                        <InputField
+                            label="Date To"
+                            id="dateTo"
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            min={dateFrom} // Don't allow "to" date before "from" date
+                            // max prop will be automatically set to today by InputField
+                        />
+                        
+                        {/* Sort Options */}
+                        <SelectField
+                            label="Sort By"
+                            id="sortBy"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            options={[
+                                { label: 'Created Date', value: 'created_at' },
+                                { label: 'Entry Date', value: 'entry_date' },
+                                { label: 'Reference Number', value: 'reference_number' }
+                            ]}
+                        />
+                    </div>
+
+                    {/* Additional filters based on active tab */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {(activeTab === 'gateInward') && (
+                            <SelectField
+                                label="Filter by Supplier"
+                                id="supplierFilter"
+                                value={supplierFilter}
+                                onChange={(e) => setSupplierFilter(e.target.value)}
+                                options={[{ label: 'All Suppliers', value: '' }, ...suppliers.map(s => ({ label: s.party_name, value: s.id }))]}
+                            />
+                        )}
+                        
+                        {(activeTab === 'issueNoteInternal' || activeTab === 'inwardInternal') && (
+                            <SelectField
+                                label="Filter by Department"
+                                id="departmentFilter"
+                                value={departmentFilter}
+                                onChange={(e) => setDepartmentFilter(e.target.value)}
+                                options={[{ label: 'All Departments', value: '' }, ...departments.map(d => ({ label: d, value: d }))]}
+                            />
+                        )}
+                        
+                        {activeTab === 'outwardChallan' && (
+                            <SelectField
+                                label="Filter by Party"
+                                id="partyFilter"
+                                value={partyFilter}
+                                onChange={(e) => setPartyFilter(e.target.value)}
+                                options={[{ label: 'All Parties', value: '' }, ...parties.map(p => ({ label: p.party_name, value: p.id }))]}
+                            />
+                        )}
+                        
+                        <SelectField
+                            label="Sort Order"
+                            id="sortOrder"
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value)}
+                            options={[
+                                { label: 'Newest First', value: 'DESC' },
+                                { label: 'Oldest First', value: 'ASC' }
+                            ]}
+                        />
+                        
+                        <div className="flex items-end">
+                            <Button 
+                                onClick={clearFilters} 
+                                className="bg-gray-500 hover:bg-gray-600 text-white w-full"
+                                type="button"
+                            >
+                                Clear All Filters
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Results Summary */}
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-3xl font-extrabold text-gray-800 border-b-2 border-blue-500 pb-2">
-                        All Recorded Entries
-                    </h2>
-                    <Button 
-                        onClick={fetchAllEntries} 
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
-                    >
-                        <span>🔄</span>
-                        <span>Refresh</span>
-                    </Button>
-                </div>
-
-                {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                        <div className="text-2xl mb-1 text-blue-600">📦</div>
-                        <div className="text-2xl font-bold text-blue-700">{itemEntries.length}</div>
-                        <div className="text-sm text-gray-600">Items Created</div>
+                    <div className="text-sm text-gray-600">
+                        Showing {filteredEntries.length} of {entries.length} {tabs.find(t => t.id === activeTab)?.label.toLowerCase()} entries
                     </div>
-                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                        <div className="text-2xl mb-1 text-green-600">⬅️</div>
-                        <div className="text-2xl font-bold text-green-700">{gateInwardEntries.length}</div>
-                        <div className="text-sm text-gray-600">Gate Inwards</div>
-                    </div>
-                    <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                        <div className="text-2xl mb-1 text-orange-600">📤</div>
-                        <div className="text-2xl font-bold text-orange-700">{issueNoteEntries.length}</div>
-                        <div className="text-sm text-gray-600">Issue Notes</div>
-                    </div>
-                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                        <div className="text-2xl mb-1 text-purple-600">🏭</div>
-                        <div className="text-2xl font-bold text-purple-700">{inwardInternalEntries.length}</div>
-                        <div className="text-sm text-gray-600">Production Entries</div>
-                    </div>
-                    <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                        <div className="text-2xl mb-1 text-red-600">🚚</div>
-                        <div className="text-2xl font-bold text-red-700">{outwardChallanEntries.length}</div>
-                        <div className="text-sm text-gray-600">Outward Challans</div>
+                    <div className="text-sm text-gray-500">
+                        {filteredEntries.length > 0 && `Total entries available: ${entries.length}`}
                     </div>
                 </div>
 
-                {/* Tab Navigation */}
-                <div className="flex flex-wrap space-x-2 space-y-2 md:space-y-0 mb-6">
-                    <TabButton tabKey="items" label="Items" icon="📦" count={itemEntries.length} />
-                    <TabButton tabKey="gateInward" label="Gate Inward" icon="⬅️" count={gateInwardEntries.length} />
-                    <TabButton tabKey="issueNote" label="Issue Notes" icon="📤" count={issueNoteEntries.length} />
-                    <TabButton tabKey="inwardInternal" label="Production" icon="🏭" count={inwardInternalEntries.length} />
-                    <TabButton tabKey="outwardChallan" label="Dispatch" icon="🚚" count={outwardChallanEntries.length} />
-                </div>
-
-                {/* Content Area */}
+                {/* Entries Display */}
                 {isLoading ? (
                     <LoadingSpinner />
                 ) : (
-                    <div>
-                        {activeTab === 'items' && (
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                    <span className="mr-2">📦</span>
-                                    Item Master Entries ({itemEntries.length})
-                                </h3>
-                                {renderItemsTable()}
+                    <div className="space-y-6">
+                        {filteredEntries.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500">
+                                <div className="text-6xl mb-4">{tabs.find(t => t.id === activeTab)?.icon}</div>
+                                <h3 className="text-xl font-semibold mb-2">No {tabs.find(t => t.id === activeTab)?.label} Entries Found</h3>
+                                <p>
+                                    {searchTerm || dateFrom || dateTo || supplierFilter || departmentFilter || partyFilter
+                                        ? 'Try adjusting your filters to see more results.'
+                                        : `No ${tabs.find(t => t.id === activeTab)?.label.toLowerCase()} entries have been recorded yet.`
+                                    }
+                                </p>
                             </div>
-                        )}
-
-                        {activeTab === 'gateInward' && (
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                    <span className="mr-2">⬅️</span>
-                                    Gate Inward Entries ({gateInwardEntries.length})
-                                </h3>
-                                {renderGateInwardTable()}
-                            </div>
-                        )}
-
-                        {activeTab === 'issueNote' && (
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                    <span className="mr-2">📤</span>
-                                    Issue Note Entries ({issueNoteEntries.length})
-                                </h3>
-                                {renderIssueNoteTable()}
-                            </div>
-                        )}
-
-                        {activeTab === 'inwardInternal' && (
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                    <span className="mr-2">🏭</span>
-                                    Inward Internal (Production) Entries ({inwardInternalEntries.length})
-                                </h3>
-                                {renderInwardInternalTable()}
-                            </div>
-                        )}
-
-                        {activeTab === 'outwardChallan' && (
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                    <span className="mr-2">🚚</span>
-                                    Outward Challan Entries ({outwardChallanEntries.length})
-                                </h3>
-                                {renderOutwardChallanTable()}
-                            </div>
+                        ) : (
+                            filteredEntries.map((entry, index) => renderEntryCard(entry, index))
                         )}
                     </div>
                 )}
