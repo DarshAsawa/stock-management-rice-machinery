@@ -156,17 +156,44 @@ app.get('/api/parties', async (req, res) => {
     }
 });
 
+// Add endpoint to generate party code
+app.get('/api/parties/generate-party-code', async (req, res) => {
+    try {
+        const [countResult] = await pool.execute('SELECT COUNT(*) as total FROM parties');
+        const nextNumber = countResult[0].total + 1;
+        const partyCode = `P${nextNumber.toString().padStart(3, '0')}`;
+        res.json({ partyCode });
+    } catch (err) {
+        console.error('Error generating party code:', err);
+        res.status(500).json({ message: 'Error generating party code', error: err.message });
+    }
+});
+
 app.post('/api/parties', async (req, res) => {
     const { partyCode, partyName, gst, address, city, bankAccount, bankName, ifscCode, userId } = req.body;
-    if (!partyCode || !partyName) {
-        return res.status(400).json({ message: 'Party Code and Party Name are required.' });
+    if (!partyName) {
+        return res.status(400).json({ message: 'Party Name is required.' });
     }
+    
     try {
+        let finalPartyCode = partyCode;
+        
+        // If no party code provided, generate auto-incrementing code
+        if (!partyCode || partyCode.trim() === '') {
+            const [countResult] = await pool.execute('SELECT COUNT(*) as total FROM parties');
+            const nextNumber = countResult[0].total + 1;
+            finalPartyCode = `P${nextNumber.toString().padStart(3, '0')}`;
+        }
+        
         const [result] = await pool.execute(
             'INSERT INTO parties (party_code, party_name, gst_number, address, city, bank_account, bank_name, ifsc_code, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [partyCode, partyName, gst, address, city, bankAccount, bankName, ifscCode, userId]
+            [finalPartyCode, partyName, gst, address, city, bankAccount, bankName, ifscCode, userId]
         );
-        res.status(201).json({ message: 'Party added successfully', id: result.insertId });
+        res.status(201).json({ 
+            message: 'Party added successfully', 
+            id: result.insertId,
+            actualPartyCode: finalPartyCode 
+        });
     } catch (err) {
         console.error('Error adding party:', err);
         res.status(500).json({ message: 'Error adding party', error: err.message });
@@ -1135,6 +1162,36 @@ app.get('/api/gate-inwards/generate-grn-number', async (req, res) => {
     }
 });
 
+// Generate auto-increment challan number for outward challans
+app.get('/api/outward-challans/generate-challan-number', async (req, res) => {
+    try {
+        // Get the latest challan number
+        const [rows] = await pool.execute(
+            'SELECT challan_no FROM outward_challans ORDER BY id DESC LIMIT 1'
+        );
+        
+        let nextNumber = 1;
+        let prefix = 'CHL-';
+        
+        if (rows.length > 0) {
+            const lastChallanNumber = rows[0].challan_no;
+            // Extract number from challan like "CHL-001"
+            const match = lastChallanNumber.match(/CHL-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+            }
+        }
+        
+        // Generate new challan number with zero padding
+        const newChallanNumber = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        
+        res.json({ challanNumber: newChallanNumber });
+    } catch (err) {
+        console.error('Error generating challan number:', err);
+        res.status(500).json({ message: 'Error generating challan number', error: err.message });
+    }
+});
+
 // Outward Challans
 // Update the app.get('/api/outward-challans') route with this fixed version
 // Fix the outward challans endpoint to properly handle parameters
@@ -1424,21 +1481,86 @@ app.get('/api/inward-internals', async (req, res) => {
         const limitValue = Math.max(1, Math.min(parseInt(limit) || 5, 100));
         
         const [rows] = await pool.execute(`
-            SELECT ii.*, i.full_description AS item_description, 
-                   COALESCE(pfs.uom, 'PC') AS uom,
-                   i.item_code,
-                   i.item_name
+            SELECT ii.*
             FROM inward_internals ii
-            LEFT JOIN items i ON ii.item_id = i.id
-            LEFT JOIN production_floor_stocks pfs ON ii.item_id = pfs.item_id
             ORDER BY ii.created_at DESC
             LIMIT ${limitValue}
         `);
+        
+        // Fetch items for each entry
+        for (let i = 0; i < rows.length; i++) {
+            // Get finished goods
+            const [finishedGoodsRows] = await pool.execute(`
+                SELECT iifg.*, i.item_name, i.item_code, i.full_description
+                FROM inward_internal_finished_goods iifg
+                LEFT JOIN items i ON iifg.item_id = i.id
+                WHERE iifg.inward_internal_id = ?
+            `, [rows[i].id]);
+            
+            // Get materials used
+            const [materialsUsedRows] = await pool.execute(`
+                SELECT iimu.*, i.item_name, i.item_code, i.full_description, pfs.quantity as available_stock
+                FROM inward_internal_materials_used iimu
+                LEFT JOIN items i ON iimu.item_id = i.id
+                LEFT JOIN production_floor_stocks pfs ON iimu.item_id = pfs.item_id
+                WHERE iimu.inward_internal_id = ?
+            `, [rows[i].id]);
+            
+            rows[i].finished_goods = finishedGoodsRows;
+            rows[i].materials_used = materialsUsedRows;
+        }
         
         res.json(rows);
     } catch (err) {
         console.error('Error fetching inward internals:', err);
         res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
+    }
+});
+
+// Add endpoint to get individual inward internal entry with items
+app.get('/api/inward-internals/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        // Get the main entry
+        const [mainRows] = await pool.execute(
+            'SELECT * FROM inward_internals WHERE id = ?',
+            [id]
+        );
+        
+        if (mainRows.length === 0) {
+            return res.status(404).json({ message: 'Inward internal entry not found' });
+        }
+        
+        const entry = mainRows[0];
+        
+        // Get finished goods
+        const [finishedGoodsRows] = await pool.execute(`
+            SELECT iifg.*, i.item_name, i.item_code, i.full_description
+            FROM inward_internal_finished_goods iifg
+            LEFT JOIN items i ON iifg.item_id = i.id
+            WHERE iifg.inward_internal_id = ?
+        `, [id]);
+        
+        // Get materials used
+        const [materialsUsedRows] = await pool.execute(`
+            SELECT iimu.*, i.item_name, i.item_code, i.full_description, pfs.quantity as available_stock
+            FROM inward_internal_materials_used iimu
+            LEFT JOIN items i ON iimu.item_id = i.id
+            LEFT JOIN production_floor_stocks pfs ON iimu.item_id = pfs.item_id
+            WHERE iimu.inward_internal_id = ?
+        `, [id]);
+        
+        const result = {
+            ...entry,
+            finished_goods: finishedGoodsRows,
+            materials_used: materialsUsedRows
+        };
+        
+        res.json(result);
+    } catch (err) {
+        console.error('Error fetching inward internal entry:', err);
+        res.status(500).json({ message: 'Error fetching inward internal entry', error: err.message });
     }
 });
 // Replace your current POST endpoint for inward-internals with this updated version
@@ -1538,6 +1660,67 @@ app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
     } catch (err) {
         console.error('Error generating receipt number:', err);
         res.status(500).json({ message: 'Error generating receipt number', error: err.message });
+    }
+});
+
+// Dashboard Stats Endpoint
+app.get('/api/dashboard-stats', async (req, res) => {
+    try {
+        const [partiesResult] = await pool.execute('SELECT COUNT(*) as total FROM parties');
+        const totalParties = partiesResult[0].total;
+
+        const [itemsResult] = await pool.execute('SELECT COUNT(*) as total FROM items');
+        const totalItems = itemsResult[0].total;
+
+        const [categoriesResult] = await pool.execute('SELECT COUNT(*) as total FROM item_categories');
+        const totalCategories = categoriesResult[0].total;
+
+        // Get recent gate inwards
+        const [recentGateInwards] = await pool.execute(`
+            SELECT gi.id, gi.grn_number, gi.grn_date, p.party_name as supplier_name
+            FROM gate_inwards gi
+            JOIN parties p ON gi.supplier_id = p.id
+            ORDER BY gi.created_at DESC
+            LIMIT 5
+        `);
+
+        // Get recent issue notes
+        const [recentIssueNotes] = await pool.execute(`
+            SELECT ini.id, ini.issue_no, ini.issue_date, ini.department
+            FROM issue_notes_internal ini
+            ORDER BY ini.created_at DESC
+            LIMIT 5
+        `);
+
+        // Get recent inwards
+        const [recentInwards] = await pool.execute(`
+            SELECT ii.id, ii.receipt_no, ii.received_date, ii.department
+            FROM inward_internals ii
+            ORDER BY ii.created_at DESC
+            LIMIT 5
+        `);
+
+        // Get recent outwards
+        const [recentOutwards] = await pool.execute(`
+            SELECT oc.id, oc.challan_no, oc.challan_date, p.party_name as customer_name
+            FROM outward_challans oc
+            JOIN parties p ON oc.party_id = p.id
+            ORDER BY oc.created_at DESC
+            LIMIT 5
+        `);
+
+        res.json({
+            totalParties,
+            totalItems,
+            totalCategories,
+            recentGateInwards,
+            recentIssueNotes,
+            recentInwards,
+            recentOutwards
+        });
+    } catch (err) {
+        console.error('Error fetching dashboard stats:', err);
+        res.status(500).json({ message: 'Error fetching dashboard stats', error: err.message });
     }
 });
 

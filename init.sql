@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS parties (
     id INT AUTO_INCREMENT PRIMARY KEY,
     party_code VARCHAR(50) UNIQUE NOT NULL,
     party_name VARCHAR(255) NOT NULL,
+    party_type ENUM('supplier', 'customer', 'both') DEFAULT 'both',
     gst_number VARCHAR(15),
     address TEXT,
     city VARCHAR(100),
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS parties (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     user_id VARCHAR(255),
     INDEX idx_party_code (party_code),
+    INDEX idx_party_type (party_type),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -31,6 +33,19 @@ CREATE TABLE IF NOT EXISTS item_categories (
     INDEX idx_category_name (category_name),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Add party_type column to existing parties table if it doesn't exist
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'parties' 
+     AND COLUMN_NAME = 'party_type') = 0,
+    'ALTER TABLE parties ADD COLUMN party_type ENUM("supplier", "customer", "both") DEFAULT "both" AFTER party_name',
+    'SELECT "party_type column already exists in parties"'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Insert main categories (ensure exact names for consistency)
 INSERT INTO item_categories (category_name, user_id) 
