@@ -329,7 +329,7 @@ const ItemMasterForm = () => {
         setModal({
             show: true,
             title: "🗑️ Confirm Deletion",
-            message: `Are you sure you want to delete item "${itemName}"?\n\n⚠️ This action will:\n• Permanently remove the item\n• May affect inventory records\n• Cannot be undone\n\nProceed with deletion?`,
+            message: `Are you sure you want to delete item "${itemName}"?\n\n⚠️ This action will:\n• Permanently remove the item\n• May affect related transactions\n• Cannot be undone\n\nProceed with deletion?`,
             type: 'warning',
             showConfirmButton: true,
             autoClose: false,
@@ -338,9 +338,37 @@ const ItemMasterForm = () => {
                     const response = await fetch(`${API_BASE_URL}/items/${id}`, {
                         method: 'DELETE'
                     });
+                    
+                    // Check if response is ok first
                     if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        // Try to parse JSON, but handle cases where it's not JSON
+                        let errorMessage = `HTTP error! status: ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.message || errorMessage;
+                        } catch (parseError) {
+                            // If JSON parsing fails, try to get text response
+                            try {
+                                const textResponse = await response.text();
+                                console.error("Server response:", textResponse);
+                                errorMessage = `Server error: ${response.status}. Please check server logs.`;
+                            } catch (textError) {
+                                console.error("Failed to read response:", textError);
+                            }
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    // For successful responses, try to parse JSON if there's content
+                    let responseData = null;
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        try {
+                            responseData = await response.json();
+                        } catch (parseError) {
+                            console.warn("Could not parse successful response as JSON:", parseError);
+                            // This is okay for successful DELETE operations that return empty body
+                        }
                     }
                     
                     setModal({ 
