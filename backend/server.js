@@ -413,6 +413,79 @@ app.get('/api/items', async (req, res) => {
     }
 });
 
+// ...existing code...
+
+// Add this DELETE endpoint for items after the existing items endpoints
+app.delete('/api/items/:id', async (req, res) => {
+    const { id } = req.params;
+
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // Check if item is being used in other tables
+        const checks = [
+            { table: 'gate_inward_items', column: 'item_id', name: 'Gate Inward entries' },
+            { table: 'issue_note_internal_items', column: 'item_id', name: 'Issue Note entries' },
+            { table: 'outward_challan_items', column: 'item_id', name: 'Outward Challan entries' },
+            { table: 'inward_internal_finished_goods', column: 'item_id', name: 'Inward Internal entries' },
+            { table: 'inward_internal_materials_used', column: 'item_id', name: 'Production entries' },
+            { table: 'production_floor_stocks', column: 'item_id', name: 'Production Floor Stock' }
+        ];
+
+        for (const check of checks) {
+            const [usageCheck] = await connection.execute(
+                `SELECT COUNT(*) as count FROM ${check.table} WHERE ${check.column} = ?`, 
+                [id]
+            );
+            if (parseInt(usageCheck[0].count) > 0) {
+                await connection.rollback();
+                return res.status(409).json({ 
+                    message: `Cannot delete item. It is being used in ${check.name}.` 
+                });
+            }
+        }
+
+        // Get item details before deletion for logging
+        const [itemDetails] = await connection.execute(
+            'SELECT item_code, item_name FROM items WHERE id = ?', 
+            [id]
+        );
+
+        if (itemDetails.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Item not found.' });
+        }
+
+        // Delete the item
+        const [result] = await connection.execute('DELETE FROM items WHERE id = ?', [id]);
+        
+        if (result.affectedRows === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Item not found.' });
+        }
+
+        await connection.commit();
+        console.log(`Item deleted: ${itemDetails[0].item_code} - ${itemDetails[0].item_name}`);
+        res.json({ 
+            message: 'Item deleted successfully',
+            deletedItem: {
+                id: id,
+                itemCode: itemDetails[0].item_code,
+                itemName: itemDetails[0].item_name
+            }
+        });
+    } catch (error) {
+        if (connection) await connection.rollback();
+        console.error('Error deleting item:', error);
+        res.status(500).json({ message: 'Error deleting item', error: error.message });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+
 // Add endpoint to get items by category name for easier filtering
 app.get('/api/items/by-category/:categoryName', async (req, res) => {
     const { categoryName } = req.params;
