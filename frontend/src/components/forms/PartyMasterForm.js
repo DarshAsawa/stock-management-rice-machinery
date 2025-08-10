@@ -142,8 +142,8 @@ const PartyMasterForm = () => {
             // Enhanced success modal with auto-close and detailed feedback
             setModal({ 
                 show: true, 
-                title: "🎉 Success!", 
-                message: `Party ${editingPartyId ? 'updated' : 'added'} successfully!\n\n✅ Party Code: ${partyCode}\n👥 Party Name: ${partyName}`, 
+                title: "Success!", 
+                message: `Party ${editingPartyId ? 'updated' : 'added'} successfully!\n\nParty Code: ${partyCode}\nParty Name: ${partyName}`, 
                 type: 'success',
                 showConfirmButton: false,
                 autoClose: true,
@@ -173,8 +173,8 @@ const PartyMasterForm = () => {
     const handleDelete = (id, partyName) => {
         setModal({
             show: true,
-            title: "🗑️ Confirm Deletion",
-            message: `Are you sure you want to delete party "${partyName}"?\n\n⚠️ This action will:\n• Permanently remove the party\n• May affect related transactions\n• Cannot be undone\n\nProceed with deletion?`,
+            title: "Confirm Deletion",
+            message: `Are you sure you want to delete party "${partyName}"?\n\nThis action will:\n• Permanently remove the party\n• May affect related transactions\n• Cannot be undone\n\nProceed with deletion?`,
             type: 'warning',
             showConfirmButton: true,
             autoClose: false,
@@ -191,7 +191,7 @@ const PartyMasterForm = () => {
                     setModal({ 
                         show: true, 
                         title: "Party Deleted", 
-                        message: `Party "${partyName}" has been successfully deleted.\n\n📊 Party records have been removed from the system.`, 
+                        message: `Party "${partyName}" has been successfully deleted.\n\nParty records have been removed from the system.`, 
                         type: 'success',
                         showConfirmButton: false,
                         autoClose: true,

@@ -19,7 +19,19 @@ const SubcategoryManagerForm = () => {
     const [field5Name, setField5Name] = useState('Description 5');
     const [editingSubcategoryId, setEditingSubcategoryId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+
+    // Updated modal state structure to match ItemMasterForm
+    const [modal, setModal] = useState({ 
+        show: false, 
+        title: '', 
+        message: '', 
+        type: 'info',
+        showConfirmButton: false, 
+        onConfirm: null,
+        onClose: null,
+        autoClose: false,
+        autoCloseDelay: 3000
+    });
 
     const fetchData = async () => {
         try {
@@ -40,7 +52,15 @@ const SubcategoryManagerForm = () => {
             setSubcategories(subcategoriesData);
         } catch (error) {
             console.error("Error fetching data:", error);
-            setModal({ show: true, title: "Error", message: "Failed to load data. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "⚠️ Data Loading Error", 
+                message: "Failed to load data. Please refresh the page and try again.", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         } finally {
             setIsLoading(false);
         }
@@ -65,7 +85,15 @@ const SubcategoryManagerForm = () => {
         e.preventDefault();
         
         if (!categoryId || !subcategoryName) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Validation Error", 
+                message: "Please fill in all required fields:\n• Category\n• Subcategory Name", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
             return;
         }
 
@@ -101,12 +129,31 @@ const SubcategoryManagerForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Subcategory ${editingSubcategoryId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchData(); // Re-fetch data to update the list
+            setModal({ 
+                show: true, 
+                title: "🎉 Success!", 
+                message: `Subcategory ${editingSubcategoryId ? 'updated' : 'added'} successfully!\n\n✅ Subcategory Name: ${subcategoryName}\n🏷️ Category: ${categories.find(cat => cat.id == categoryId)?.category_name || 'N/A'}`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchData();
+                }
+            });
         } catch (error) {
             console.error("Error saving subcategory:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save subcategory: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Operation Failed", 
+                message: `Failed to ${editingSubcategoryId ? 'update' : 'save'} subcategory.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         }
     };
 
@@ -121,12 +168,14 @@ const SubcategoryManagerForm = () => {
         setField5Name(subcategory.field5_name || 'Description 5');
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = (id, subcategoryName) => {
         setModal({
             show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this subcategory?",
+            title: "🗑️ Confirm Deletion",
+            message: `Are you sure you want to delete subcategory "${subcategoryName}"?\n\n⚠️ This action will:\n• Permanently remove the subcategory\n• May affect related items\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
             showConfirmButton: true,
+            autoClose: false,
             onConfirm: async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/subcategories/${id}`, {
@@ -136,14 +185,34 @@ const SubcategoryManagerForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Subcategory deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchData(); // Re-fetch data
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "✅ Subcategory Deleted", 
+                        message: `Subcategory "${subcategoryName}" has been successfully deleted.\n\n📊 Subcategory records have been removed from the system.`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchData();
+                        }
+                    });
                 } catch (error) {
                     console.error("Error deleting subcategory:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete subcategory: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "❌ Deletion Failed", 
+                        message: `Failed to delete subcategory "${subcategoryName}".\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
                 }
             },
-            onClose: () => setModal({ ...modal, show: false })
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
         });
     };
 
@@ -152,7 +221,7 @@ const SubcategoryManagerForm = () => {
             <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Subcategory Manager</h2>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 <SelectField 
-                    label="Category" 
+                    label="Category*" 
                     id="categoryId" 
                     value={categoryId} 
                     onChange={(e) => setCategoryId(e.target.value)} 
@@ -160,7 +229,7 @@ const SubcategoryManagerForm = () => {
                     required={true} 
                 />
                 <InputField 
-                    label="Subcategory Name" 
+                    label="Subcategory Name*" 
                     id="subcategoryName" 
                     value={subcategoryName} 
                     onChange={(e) => setSubcategoryName(e.target.value)} 
@@ -256,7 +325,7 @@ const SubcategoryManagerForm = () => {
                                         </td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(subcategory)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(subcategory.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(subcategory.id, subcategory.subcategory_name)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
                                         </td>
                                     </tr>
                                 ))
@@ -269,12 +338,15 @@ const SubcategoryManagerForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
             />
         </div>
     );
 };
 
-export default SubcategoryManagerForm; 
+export default SubcategoryManagerForm;
