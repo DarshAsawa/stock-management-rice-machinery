@@ -14,8 +14,9 @@ const InwardInternalForm = () => {
         { label: 'Quality Control', value: 'Quality Control' },
         { label: 'R&D', value: 'R&D' }
     ]);
-    const [allItems, setAllItems] = useState([]); // All items for finished goods
-    const [productionFloorItems, setProductionFloorItems] = useState([]); // Raw materials from production floor
+    const [allItems, setAllItems] = useState([]);
+    const [productionFloorItems, setProductionFloorItems] = useState([]);
+    const [productionFloorStocks, setProductionFloorStocks] = useState([]);
     const [recentEntries, setRecentEntries] = useState([]);
     const [receiptNo, setReceiptNo] = useState('');
     const [receivedDate, setReceivedDate] = useState('');
@@ -26,25 +27,46 @@ const InwardInternalForm = () => {
     const [editingEntryId, setEditingEntryId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+    const [modal, setModal] = useState({ 
+        show: false, 
+        title: '', 
+        message: '', 
+        type: 'info',
+        showConfirmButton: false, 
+        onConfirm: null,
+        onClose: null,
+        autoClose: false,
+        autoCloseDelay: 3000
+    });
 
-    const generateReceiptNumber = async () => {
+    const generateReceiptNumber = useCallback(async () => {
         try {
+            console.log('Attempting to generate receipt number...');
             const response = await fetch(`${API_BASE_URL}/inward-internals/generate-receipt-number`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            console.log('Response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Response error:', errorText);
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
             
             const data = await response.json();
+            console.log('Received receipt number data:', data);
             setReceiptNo(data.receiptNumber);
         } catch (error) {
             console.error("Error generating receipt number:", error);
             setModal({ 
                 show: true, 
-                title: "Error", 
+                title: "❌ Generation Failed", 
                 message: "Failed to generate receipt number. Please try again.", 
-                onClose: () => setModal({ ...modal, show: false }) 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
             });
         }
-    };
+    }, [API_BASE_URL]);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -61,29 +83,46 @@ const InwardInternalForm = () => {
             const allItemsData = await allItemsResponse.json();
             const productionFloorData = await productionFloorResponse.json();
 
-            setAllItems(allItemsData.map(i => ({ 
-                id: i.id, 
-                label: `${i.item_name} - ${i.full_description}`, 
-                value: i.id, 
-                unitRate: parseFloat(i.unit_rate), 
-                itemCode: i.item_code,
-                description: i.full_description,
-                categoryName: i.category_name
-            })));
+            const finishedGoodsItems = allItemsData
+                .filter(i => i.category_name === 'Finish Good')
+                .map(i => ({ 
+                    id: i.id, 
+                    label: `${i.item_name} - ${i.full_description}`, 
+                    value: i.id, 
+                    unitRate: parseFloat(i.unit_rate), 
+                    itemCode: i.item_code,
+                    description: i.full_description,
+                    categoryName: i.category_name,
+                    uom: i.uom || 'PC'
+                }));
 
-            setProductionFloorItems(productionFloorData.map(i => ({ 
-                id: i.item_id, 
-                label: `${i.item_description} - ${i.item_code}`, 
-                value: i.item_id, 
-                unitRate: parseFloat(i.unit_rate), 
-                stock: i.quantity,
-                itemCode: i.item_code,
-                description: i.item_description,
-                categoryName: i.category_name
-            })));
+            const rawMaterialItems = allItemsData
+                .filter(i => i.category_name === 'Raw Material')
+                .map(i => ({ 
+                    id: i.id, 
+                    label: `${i.item_name} - ${i.full_description}`, 
+                    value: i.id, 
+                    unitRate: parseFloat(i.unit_rate), 
+                    itemCode: i.item_code,
+                    description: i.full_description,
+                    categoryName: i.category_name,
+                    uom: i.uom || 'PC'
+                }));
+
+            setAllItems(finishedGoodsItems);
+            setProductionFloorItems(rawMaterialItems);
+            setProductionFloorStocks(productionFloorData);
         } catch (error) {
             console.error("Error fetching data:", error);
-            setModal({ show: true, title: "Error", message: "Failed to load data. Please try again.", onClose: () => setModal(m => ({ ...m, show: false })) });
+            setModal({ 
+                show: true, 
+                title: "⚠️ Data Loading Error", 
+                message: "Failed to load data. Please refresh the page and try again.", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         } finally {
             setIsLoading(false);
         }
@@ -95,7 +134,7 @@ const InwardInternalForm = () => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             
             const data = await response.json();
-            setRecentEntries(data.slice(0, 10)); // Show last 10 entries
+            setRecentEntries(data.slice(0, 10));
         } catch (error) {
             console.error("Error fetching recent entries:", error);
         }
@@ -106,21 +145,24 @@ const InwardInternalForm = () => {
         fetchRecentEntries();
     }, [fetchData, fetchRecentEntries]);
 
-    // Auto-generate receipt number when form is empty (new entry)
     useEffect(() => {
         if (!editingEntryId && !receiptNo) {
             generateReceiptNumber();
         }
-    }, [editingEntryId]);
+    }, [editingEntryId, receiptNo, generateReceiptNumber]);
 
     const handleFinishGoodsChange = (index, field, value) => {
         const updatedItems = [...finishGoods];
         updatedItems[index][field] = value;
 
         if (field === 'itemId') {
-            const selectedItem = allItems.find(i => i.value === Number(value));
+            const selectedItem = allItems.find(i => parseInt(i.value) === parseInt(value));
             if (selectedItem) {
-                updatedItems[index].unitRate = selectedItem.unitRate;
+                updatedItems[index].unitRate = selectedItem.unitRate || 0;
+                updatedItems[index].uom = selectedItem.uom || 'PC';
+            } else {
+                updatedItems[index].uom = 'PC';
+                updatedItems[index].unitRate = 0;
             }
         }
         setFinishGoods(updatedItems);
@@ -131,10 +173,17 @@ const InwardInternalForm = () => {
         updatedItems[index][field] = value;
 
         if (field === 'itemId') {
-            const selectedItem = productionFloorItems.find(i => i.value === Number(value));
+            const selectedItem = productionFloorItems.find(i => parseInt(i.value) === parseInt(value));
             if (selectedItem) {
-                updatedItems[index].unitRate = selectedItem.unitRate;
-                updatedItems[index].availableStock = selectedItem.stock;
+                updatedItems[index].unitRate = selectedItem.unitRate || 0;
+                updatedItems[index].uom = selectedItem.uom || 'PC';
+                
+                const stockInfo = productionFloorStocks.find(s => parseInt(s.item_id) === parseInt(value));
+                updatedItems[index].availableStock = stockInfo ? stockInfo.quantity : 0;
+            } else {
+                updatedItems[index].uom = 'PC';
+                updatedItems[index].unitRate = 0;
+                updatedItems[index].availableStock = 0;
             }
         }
         setMaterialUsed(updatedItems);
@@ -173,12 +222,15 @@ const InwardInternalForm = () => {
     const validateStock = () => {
         for (let item of materialUsed) {
             if (Number(item.qty) > item.availableStock) {
-                const selectedItem = productionFloorItems.find(i => i.value === Number(item.itemId));
+                const selectedItem = productionFloorItems.find(i => parseInt(i.value) === parseInt(item.itemId));
                 setModal({ 
                     show: true, 
-                    title: "Insufficient Stock", 
-                    message: `${selectedItem?.label || 'Selected item'} has only ${item.availableStock} units available in production floor, but you're trying to use ${item.qty} units.`, 
-                    onClose: () => setModal({ ...modal, show: false }) 
+                    title: "⚠️ Insufficient Stock Alert", 
+                    message: `${selectedItem?.label || 'Selected item'} has only ${item.availableStock} units available in production floor, but you're trying to use ${item.qty} units.\n\nPlease adjust the quantity to proceed.`, 
+                    type: 'warning',
+                    showConfirmButton: false,
+                    autoClose: false,
+                    onClose: () => setModal(prev => ({ ...prev, show: false }))
                 });
                 return false;
             }
@@ -188,39 +240,56 @@ const InwardInternalForm = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (!receiptNo || !receivedDate || !receivedBy || !department) {
+            setModal({ 
+                show: true, 
+                title: "❌ Validation Error", 
+                message: "Please fill in all required fields:\n• Receipt Number\n• Received Date\n• Received By\n• Department", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+            return;
+        }
 
-        // Validate stock before submission
+        if (finishGoods.length === 0 && materialUsed.length === 0) {
+            setModal({ 
+                show: true, 
+                title: "❌ Items Required", 
+                message: "Please add at least one item in either:\n• Finished Goods section\n• Material Used section", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+            return;
+        }
+
         if (!validateStock()) {
             return;
         }
 
-        if (!receivedDate || !receivedBy || !department || finishGoods.length === 0 || materialUsed.length === 0) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
-            return;
-        }
-
-        // Validate items
-        for (const item of finishGoods) {
-            if (!item.itemId || item.qty <= 0) {
-                setModal({ show: true, title: "Validation Error", message: "Please fill in all finished goods details correctly.", onClose: () => setModal({ ...modal, show: false }) });
-                return;
-            }
-        }
-
-        for (const item of materialUsed) {
-            if (!item.itemId || item.qty <= 0) {
-                setModal({ show: true, title: "Validation Error", message: "Please fill in all materials used details correctly.", onClose: () => setModal({ ...modal, show: false }) });
-                return;
-            }
-        }
-
         const inwardData = {
-            receiptNo: receiptNo || null,
+            receiptNo,
             receivedDate,
             receivedBy,
             department,
-            finishGoods,
-            materialUsed,
+            finishGoods: finishGoods.filter(item => item.itemId).map(item => ({
+                itemId: item.itemId,
+                unitRate: item.unitRate,
+                uom: item.uom,
+                qty: item.qty,
+                remark: item.remark
+            })),
+            materialUsed: materialUsed.filter(item => item.itemId).map(item => ({
+                itemId: item.itemId,
+                unitRate: item.unitRate,
+                uom: item.uom,
+                qty: item.qty,
+                remark: item.remark
+            })),
             userId
         };
 
@@ -245,18 +314,87 @@ const InwardInternalForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Inward Internal ${editingEntryId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchRecentEntries(); // Re-fetch recent entries
+            setModal({ 
+                show: true, 
+                title: "🎉 Production Completed!", 
+                message: `Inward Internal ${receiptNo} ${editingEntryId ? 'updated' : 'completed'} successfully!\n\n✅ Finished goods added to inventory\n📦 Materials consumed from production floor`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchRecentEntries();
+                    if (!editingEntryId) {
+                        generateReceiptNumber();
+                    }
+                }
+            });
         } catch (error) {
             console.error("Error saving inward internal:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save inward internal: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Operation Failed", 
+                message: `Failed to save production data.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         }
+    };
+
+    const handleDelete = (entryId, receiptNo) => {
+        setModal({
+            show: true,
+            title: "🗑️ Confirm Production Entry Deletion",
+            message: `Are you sure you want to delete Production Entry ${receiptNo}?\n\n⚠️ This action will:\n• Permanently remove the production entry\n• Reverse all stock movements\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
+            showConfirmButton: true,
+            autoClose: false,
+            onConfirm: async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/inward-internals/${entryId}`, {
+                        method: 'DELETE'
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "✅ Production Entry Deleted", 
+                        message: `Production entry ${receiptNo} has been successfully deleted.\n\n🔄 All stock movements have been reversed\n📊 Inventory levels have been restored`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchRecentEntries();
+                        }
+                    });
+                } catch (error) {
+                    console.error("Error deleting inward internal:", error);
+                    setModal({ 
+                        show: true, 
+                        title: "❌ Deletion Failed", 
+                        message: `Failed to delete production entry ${receiptNo}.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
+                }
+            },
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
+        });
     };
 
     const handleEdit = async (entry) => {
         try {
-            // Fetch the complete entry with items
             const response = await fetch(`${API_BASE_URL}/inward-internals/${entry.id}`);
             if (!response.ok) throw new Error('Failed to fetch entry details');
             
@@ -296,41 +434,17 @@ const InwardInternalForm = () => {
             console.error("Error fetching entry details:", error);
             setModal({ 
                 show: true, 
-                title: "Error", 
+                title: "❌ Loading Error", 
                 message: "Failed to load entry details. Please try again.", 
-                onClose: () => setModal(m => ({ ...m, show: false })) 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
             });
         }
     };
 
-    const handleDelete = (entryId) => {
-        setModal({
-            show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this inward internal entry?",
-            showConfirmButton: true,
-            onConfirm: async () => {
-                try {
-                    const response = await fetch(`${API_BASE_URL}/inward-internals/${entryId}`, {
-                        method: 'DELETE'
-                    });
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-                    }
-                    setModal({ show: true, title: "Success", message: "Inward internal entry deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchRecentEntries(); // Re-fetch recent entries
-                } catch (error) {
-                    console.error("Error deleting inward internal:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete inward internal: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
-                }
-            },
-            onClose: () => setModal({ ...modal, show: false })
-        });
-    };
-
     const handlePrint = (entry) => {
-        // Create a print-friendly version of the inward internal entry
         const printWindow = window.open('', '_blank');
         const printContent = `
             <html>
@@ -525,6 +639,7 @@ const InwardInternalForm = () => {
         printWindow.document.close();
     };
 
+    // ...rest of the component remains the same...
     return (
         <div className="bg-white p-8 rounded-xl shadow-lg">
             <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-blue-500 pb-2">Inward (Internal)</h2>
@@ -538,7 +653,6 @@ const InwardInternalForm = () => {
                             onChange={(e) => setReceiptNo(e.target.value)} 
                             placeholder="Optional"
                         />
-
                     </div>
                     <InputField 
                         label="Received Date" 
@@ -588,8 +702,10 @@ const InwardInternalForm = () => {
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={(e) => handleFinishGoodsChange(index, 'uom', e.target.value)} 
+                                onChange={() => {}}
+                                readOnly={true} 
                                 required={true} 
+                                className="bg-gray-100"
                             />
                             <InputField 
                                 label="Quantity" 
@@ -647,8 +763,10 @@ const InwardInternalForm = () => {
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={(e) => handleMaterialUsedChange(index, 'uom', e.target.value)} 
+                                onChange={() => {}}
+                                readOnly={true} 
                                 required={true} 
+                                className="bg-gray-100"
                             />
                             <InputField 
                                 label="Quantity" 
@@ -691,7 +809,6 @@ const InwardInternalForm = () => {
                     </Button>
                 </div>
 
-                {/* Form Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
                     <Button 
                         type="submit"
@@ -764,7 +881,7 @@ const InwardInternalForm = () => {
                                         </td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(entry)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(entry.id, entry.receipt_no)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
                                             <Button onClick={() => handlePrint(entry)} className="bg-blue-500 hover:bg-blue-700 text-white text-xs py-1 px-2">Print</Button>
                                         </td>
                                     </tr>
@@ -778,6 +895,9 @@ const InwardInternalForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}

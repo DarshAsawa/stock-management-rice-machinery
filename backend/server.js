@@ -434,17 +434,17 @@ app.get('/api/items/by-category/:categoryName', async (req, res) => {
 });
 
 app.post('/api/items', async (req, res) => {
-    const { code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, rackBin, userId } = req.body;
+    const { code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, uom, rackBin, userId } = req.body;
     
-    if (!code || !itemName || !categoryId || !subcategoryId || !userId) {
-        return res.status(400).json({ message: 'Code, item name, category ID, subcategory ID, and user ID are required' });
+    if (!code || !itemName || !categoryId || !subcategoryId || !userId || !uom) {
+        return res.status(400).json({ message: 'Code, item name, category ID, subcategory ID, UOM, and user ID are required' });
     }
 
     try {
         const [result] = await pool.execute(
-            `INSERT INTO items (item_code, item_name, category_id, subcategory_id, description1, description2, description3, description4, description5, full_description, stock, min_level, unit_rate, rack_bin, user_id) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, rackBin, userId]
+            `INSERT INTO items (item_code, item_name, category_id, subcategory_id, description1, description2, description3, description4, description5, full_description, stock, min_level, unit_rate, uom, rack_bin, user_id) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, uom, rackBin, userId]
         );
         res.status(201).json({ message: 'Item created successfully', id: result.insertId });
     } catch (error) {
@@ -459,18 +459,18 @@ app.post('/api/items', async (req, res) => {
 
 app.put('/api/items/:id', async (req, res) => {
     const { id } = req.params;
-    const { code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, rackBin, userId } = req.body;
+    const { code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, uom, rackBin, userId } = req.body;
 
-    if (!code || !itemName || !categoryId || !subcategoryId || !userId) {
-        return res.status(400).json({ message: 'Code, item name, category ID, subcategory ID, and user ID are required' });
+    if (!code || !itemName || !categoryId || !subcategoryId || !userId || !uom) {
+        return res.status(400).json({ message: 'Code, item name, category ID, subcategory ID, UOM, and user ID are required' });
     }
 
     try {
         const [result] = await pool.execute(
             `UPDATE items 
-             SET item_code = ?, item_name = ?, category_id = ?, subcategory_id = ?, description1 = ?, description2 = ?, description3 = ?, description4 = ?, description5 = ?, full_description = ?, stock = ?, min_level = ?, unit_rate = ?, rack_bin = ?, updated_at = NOW()
+             SET item_code = ?, item_name = ?, category_id = ?, subcategory_id = ?, description1 = ?, description2 = ?, description3 = ?, description4 = ?, description5 = ?, full_description = ?, stock = ?, min_level = ?, unit_rate = ?, uom = ?, rack_bin = ?, updated_at = NOW()
              WHERE id = ?`,
-            [code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, rackBin, id]
+            [code, itemName, categoryId, subcategoryId, desc1, desc2, desc3, desc4, desc5, fullDescription, stock, minLevel, unitRate, uom, rackBin, id]
         );
 
         if (result.affectedRows === 0) {
@@ -1474,20 +1474,13 @@ app.put('/api/inward-internals/:id', async (req, res) => {
 
 // Replace the existing GET endpoint for inward-internals with this corrected version
 app.get('/api/inward-internals', async (req, res) => {
-    const { limit = 5 } = req.query;
-    
     try {
-        // Make sure limit is a valid number
-        const limitValue = Math.max(1, Math.min(parseInt(limit) || 5, 100));
-        
         const [rows] = await pool.execute(`
-            SELECT ii.*
-            FROM inward_internals ii
-            ORDER BY ii.created_at DESC
-            LIMIT ${limitValue}
+            SELECT * FROM inward_internals 
+            ORDER BY created_at DESC
         `);
         
-        // Fetch items for each entry
+        // Fetch associated items for each inward entry
         for (let i = 0; i < rows.length; i++) {
             // Get finished goods
             const [finishedGoodsRows] = await pool.execute(`
@@ -1499,10 +1492,9 @@ app.get('/api/inward-internals', async (req, res) => {
             
             // Get materials used
             const [materialsUsedRows] = await pool.execute(`
-                SELECT iimu.*, i.item_name, i.item_code, i.full_description, pfs.quantity as available_stock
+                SELECT iimu.*, i.item_name, i.item_code, i.full_description
                 FROM inward_internal_materials_used iimu
                 LEFT JOIN items i ON iimu.item_id = i.id
-                LEFT JOIN production_floor_stocks pfs ON iimu.item_id = pfs.item_id
                 WHERE iimu.inward_internal_id = ?
             `, [rows[i].id]);
             
@@ -1514,6 +1506,44 @@ app.get('/api/inward-internals', async (req, res) => {
     } catch (err) {
         console.error('Error fetching inward internals:', err);
         res.status(500).json({ message: 'Error fetching inward internals', error: err.message });
+    }
+});
+
+// Add endpoint to generate receipt number (MUST be before the :id route)
+app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
+    try {
+        console.log('Generating receipt number...');
+        
+        // Get the latest receipt number
+        const [rows] = await pool.execute(
+            'SELECT receipt_no FROM inward_internals WHERE receipt_no IS NOT NULL ORDER BY id DESC LIMIT 1'
+        );
+        
+        console.log('Found existing receipt numbers:', rows);
+        
+        let nextNumber = 1;
+        let prefix = 'REC-';
+        
+        if (rows.length > 0 && rows[0].receipt_no) {
+            const lastReceiptNo = rows[0].receipt_no;
+            console.log('Last receipt number:', lastReceiptNo);
+            
+            // Extract number from receipt like "REC-001"
+            const match = lastReceiptNo.match(/REC-(\d+)/);
+            if (match) {
+                nextNumber = parseInt(match[1]) + 1;
+                console.log('Next number calculated:', nextNumber);
+            }
+        }
+        
+        // Generate new receipt number with zero padding
+        const newReceiptNumber = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
+        console.log('Generated receipt number:', newReceiptNumber);
+        
+        res.json({ receiptNumber: newReceiptNumber });
+    } catch (err) {
+        console.error('Error generating receipt number:', err);
+        res.status(500).json({ message: 'Error generating receipt number', error: err.message });
     }
 });
 
@@ -1630,36 +1660,6 @@ app.post('/api/inward-internals', async (req, res) => {
         res.status(500).json({ message: 'Error adding inward internal entry', error: err.message });
     } finally {
         if (connection) connection.release();
-    }
-});
-
-// Add endpoint to generate receipt number
-app.get('/api/inward-internals/generate-receipt-number', async (req, res) => {
-    try {
-        // Get the latest receipt number
-        const [rows] = await pool.execute(
-            'SELECT receipt_no FROM inward_internals WHERE receipt_no IS NOT NULL ORDER BY id DESC LIMIT 1'
-        );
-        
-        let nextNumber = 1;
-        let prefix = 'REC-';
-        
-        if (rows.length > 0 && rows[0].receipt_no) {
-            const lastReceiptNo = rows[0].receipt_no;
-            // Extract number from receipt like "REC-001"
-            const match = lastReceiptNo.match(/REC-(\d+)/);
-            if (match) {
-                nextNumber = parseInt(match[1]) + 1;
-            }
-        }
-        
-        // Generate new receipt number with zero padding
-        const newReceiptNumber = `${prefix}${nextNumber.toString().padStart(3, '0')}`;
-        
-        res.json({ receiptNumber: newReceiptNumber });
-    } catch (err) {
-        console.error('Error generating receipt number:', err);
-        res.status(500).json({ message: 'Error generating receipt number', error: err.message });
     }
 });
 

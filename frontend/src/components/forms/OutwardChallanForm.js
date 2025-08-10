@@ -21,7 +21,17 @@ const OutwardChallanForm = () => {
     const [editingEntryId, setEditingEntryId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+    const [modal, setModal] = useState({ 
+        show: false, 
+        title: '', 
+        message: '', 
+        type: 'info',
+        showConfirmButton: false, 
+        onConfirm: null,
+        onClose: null,
+        autoClose: false,
+        autoCloseDelay: 3000
+    });
 
     const generateChallanNumber = async () => {
         try {
@@ -34,9 +44,12 @@ const OutwardChallanForm = () => {
             console.error("Error generating challan number:", error);
             setModal({ 
                 show: true, 
-                title: "Error", 
+                title: "❌ Generation Failed", 
                 message: "Failed to generate challan number. Please try again.", 
-                onClose: () => setModal({ ...modal, show: false }) 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
             });
         }
     };
@@ -56,12 +69,19 @@ const OutwardChallanForm = () => {
             const customersData = await customersResponse.json();
             const itemsData = await itemsResponse.json();
 
-            // Show all parties (no filtering by type)
             setCustomers(customersData);
             setItems(itemsData);
         } catch (error) {
             console.error("Error fetching data:", error);
-            setModal({ show: true, title: "Error", message: "Failed to load data. Please try again.", onClose: () => setModal(m => ({ ...m, show: false })) });
+            setModal({ 
+                show: true, 
+                title: "⚠️ Data Loading Error", 
+                message: "Failed to load initial data. Please refresh the page and try again.", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         } finally {
             setIsLoading(false);
         }
@@ -73,7 +93,7 @@ const OutwardChallanForm = () => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             
             const data = await response.json();
-            setRecentEntries(data.slice(0, 10)); // Show last 10 entries
+            setRecentEntries(data.slice(0, 10));
         } catch (error) {
             console.error("Error fetching recent entries:", error);
         }
@@ -84,7 +104,6 @@ const OutwardChallanForm = () => {
         fetchRecentEntries();
     }, [fetchInitialData, fetchRecentEntries]);
 
-    // Auto-generate challan number when form is empty (new entry)
     useEffect(() => {
         if (!editingEntryId && !challanNo) {
             generateChallanNumber();
@@ -94,23 +113,26 @@ const OutwardChallanForm = () => {
     const handleItemChange = (index, field, value) => {
         const newItems = [...itemsList];
         newItems[index] = { ...newItems[index], [field]: value };
+
+        if (field === 'itemId') {
+            const selectedItem = items.find(i => parseInt(i.id) === parseInt(value));
+            if (selectedItem) {
+                newItems[index].uom = selectedItem.uom || 'PC';
+                newItems[index].unitRate = parseFloat(selectedItem.unit_rate) || 0;
+                newItems[index].availableStock = selectedItem.stock || 0;
+            } else {
+                newItems[index].uom = 'PC';
+                newItems[index].unitRate = 0;
+                newItems[index].availableStock = 0;
+            }
+        }
         
-        // Calculate amount if unit rate or quantity changes
         if (field === 'unitRate' || field === 'quantity') {
             const unitRate = parseFloat(newItems[index].unitRate) || 0;
             const quantity = parseFloat(newItems[index].quantity) || 0;
             newItems[index].amount = unitRate * quantity;
         }
 
-        // Update available stock when item changes
-        if (field === 'itemId') {
-            const selectedItem = items.find(item => item.id == value);
-            if (selectedItem) {
-                newItems[index].availableStock = selectedItem.stock;
-                newItems[index].unitRate = selectedItem.unit_rate;
-            }
-        }
-        
         setItemsList(newItems);
     };
 
@@ -138,12 +160,15 @@ const OutwardChallanForm = () => {
     const validateStock = () => {
         for (let item of itemsList) {
             if (Number(item.quantity) > item.availableStock) {
-                const selectedItem = items.find(i => i.id == item.itemId);
+                const selectedItem = items.find(i => i.id === item.itemId);
                 setModal({ 
                     show: true, 
-                    title: "Insufficient Stock", 
-                    message: `${selectedItem?.item_name || 'Selected item'} has only ${item.availableStock} units available, but you're trying to dispatch ${item.quantity} units.`, 
-                    onClose: () => setModal({ ...modal, show: false }) 
+                    title: "⚠️ Insufficient Stock Alert", 
+                    message: `${selectedItem?.item_name || 'Selected item'} has only ${item.availableStock} units available, but you're trying to dispatch ${item.quantity} units.\n\nPlease adjust the quantity to proceed.`, 
+                    type: 'warning',
+                    showConfirmButton: false,
+                    autoClose: false,
+                    onClose: () => setModal(prev => ({ ...prev, show: false }))
                 });
                 return false;
             }
@@ -154,26 +179,40 @@ const OutwardChallanForm = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // Validate stock before submission
         if (!validateStock()) {
             return;
         }
 
         if (!challanNo || !challanDate || !customerId || itemsList.length === 0) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Validation Error", 
+                message: "Please fill in all required fields:\n• Challan Number\n• Challan Date\n• Party\n• At least one item", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
             return;
         }
 
-        // Validate items
         for (const item of itemsList) {
             if (!item.itemId || item.quantity <= 0) {
-                setModal({ show: true, title: "Validation Error", message: "Please fill in all item details correctly.", onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "❌ Item Validation Error", 
+                    message: "Please ensure all items have:\n• Valid item selection\n• Quantity greater than 0\n\nCheck all item rows before submitting.", 
+                    type: 'error',
+                    showConfirmButton: false,
+                    autoClose: false,
+                    onClose: () => setModal(prev => ({ ...prev, show: false }))
+                });
                 return;
             }
         }
 
         const outwardData = {
-            partyId: customerId, // Map customerId to partyId for backend
+            partyId: customerId,
             challanNo,
             challanDate,
             transport: transportMode,
@@ -187,6 +226,8 @@ const OutwardChallanForm = () => {
             })),
             userId
         };
+
+        setIsLoading(true);
 
         try {
             let response;
@@ -209,12 +250,39 @@ const OutwardChallanForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Outward Challan ${editingEntryId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchRecentEntries(); // Re-fetch recent entries
+            const result = await response.json();
+
+            setModal({ 
+                show: true, 
+                title: "🎉 Success!", 
+                message: `Outward Challan ${editingEntryId ? 'updated' : 'created'} successfully!\n\n✅ Items have been dispatched.\n📋 Challan Number: ${challanNo}`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchRecentEntries();
+                    if (!editingEntryId) {
+                        generateChallanNumber();
+                    }
+                }
+            });
+
         } catch (error) {
             console.error("Error saving outward challan:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save outward challan: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Operation Failed", 
+                message: `Failed to ${editingEntryId ? 'update' : 'create'} outward challan.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -222,7 +290,7 @@ const OutwardChallanForm = () => {
         setEditingEntryId(entry.id);
         setChallanNo(entry.challan_no || '');
         setChallanDate(entry.challan_date ? new Date(entry.challan_date).toISOString().split('T')[0] : '');
-        setCustomerId(entry.party_id || ''); // Use party_id instead of customer_id
+        setCustomerId(entry.party_id || '');
         setTransportMode(entry.transport || '');
         setVehicleNo(entry.lr_no || '');
         setDriverName(entry.remark || '');
@@ -235,17 +303,21 @@ const OutwardChallanForm = () => {
                 quantity: item.quantity,
                 amount: (item.quantity * (item.unit_rate || 0)),
                 remark: item.remark || '',
-                availableStock: 0 // Will be fetched separately
+                availableStock: 0
             })));
+        } else {
+            setItemsList([{ itemId: '', unitRate: 0, uom: 'PC', quantity: 0, amount: 0, remark: '', availableStock: 0 }]);
         }
     };
 
-    const handleDelete = (entryId) => {
+    const handleDelete = (entryId, challanNo) => {
         setModal({
             show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this outward challan?",
+            title: "🗑️ Confirm Deletion",
+            message: `Are you sure you want to delete Outward Challan ${challanNo}?\n\n⚠️ This action will:\n• Permanently remove the challan\n• Reverse all stock movements\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
             showConfirmButton: true,
+            autoClose: false,
             onConfirm: async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/outward-challans/${entryId}`, {
@@ -255,20 +327,42 @@ const OutwardChallanForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Outward challan deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchRecentEntries(); // Re-fetch recent entries
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "✅ Challan Deleted", 
+                        message: `Outward challan ${challanNo} has been successfully deleted.\n\n🔄 Stock levels have been restored.\n📊 Inventory updated.`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchRecentEntries();
+                        }
+                    });
+                    
                 } catch (error) {
                     console.error("Error deleting outward challan:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete outward challan: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "❌ Deletion Failed", 
+                        message: `Failed to delete outward challan ${challanNo}.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
                 }
             },
-            onClose: () => setModal({ ...modal, show: false })
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
         });
     };
 
     const handlePrint = (entry) => {
-        // Create a print-friendly version of the outward challan
         const printWindow = window.open('', '_blank');
+        const totalAmount = entry.items ? entry.items.reduce((sum, item) => sum + (item.quantity * (item.unit_rate || 0)), 0) : 0;
+        
         const printContent = `
             <html>
                 <head>
@@ -395,6 +489,10 @@ const OutwardChallanForm = () => {
                                         <td>₹${(item.quantity || 0) * (item.unit_rate || 0)}</td>
                                     </tr>
                                 `).join('') : '<tr><td colspan="7">No items found</td></tr>'}
+                                <tr class="total-row">
+                                    <td colspan="6" style="text-align: right;"><strong>Total Amount:</strong></td>
+                                    <td><strong>₹${totalAmount.toFixed(2)}</strong></td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -438,7 +536,6 @@ const OutwardChallanForm = () => {
                             readOnly={true}
                             className="bg-gray-100"
                         />
-
                     </div>
                     <InputField 
                         label="Challan Date" 
@@ -501,8 +598,10 @@ const OutwardChallanForm = () => {
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                onChange={() => {}}
+                                readOnly={true} 
                                 required={true} 
+                                className="bg-gray-100"
                             />
                             <InputField 
                                 label="Quantity" 
@@ -553,7 +652,6 @@ const OutwardChallanForm = () => {
                     </Button>
                 </div>
 
-                {/* Form Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
                     <Button 
                         type="submit"
@@ -615,7 +713,7 @@ const OutwardChallanForm = () => {
                                         <td className="py-3 px-4 text-sm text-gray-800">{entry.transport || '-'}</td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(entry)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(entry.id, entry.challan_no)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
                                             <Button onClick={() => handlePrint(entry)} className="bg-blue-500 hover:bg-blue-700 text-white text-xs py-1 px-2">Print</Button>
                                         </td>
                                     </tr>
@@ -629,9 +727,12 @@ const OutwardChallanForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
             />
         </div>
     );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { AppContext, API_BASE_URL } from '../../context/AppContext';
+import { AppContext } from '../../context/AppContext';
 import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
 import Button from '../ui/Button';
@@ -23,10 +23,11 @@ const ItemMasterForm = () => {
     const [desc5, setDesc5] = useState('');
     const [fullDescription, setFullDescription] = useState(''); // Auto-generated from desc1-5
     const [itemName, setItemName] = useState(''); // User can select from full description
-    const [stock, setStock] = useState(0);
-    const [minLevel, setMinLevel] = useState(0);
-    const [unitRate, setUnitRate] = useState(0);
+    const [stock, setStock] = useState('');
+    const [minLevel, setMinLevel] = useState('');
+    const [unitRate, setUnitRate] = useState('');
     const [rackBin, setRackBin] = useState('');
+    const [uom, setUom] = useState('PC');
     
     // Field labels state (these update based on subcategory)
     const [field1Label, setField1Label] = useState('Description 1');
@@ -38,7 +39,17 @@ const ItemMasterForm = () => {
     const [editingItemId, setEditingItemId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+    const [modal, setModal] = useState({ 
+        show: false, 
+        title: '', 
+        message: '', 
+        type: 'info',
+        showConfirmButton: false, 
+        onConfirm: null,
+        onClose: null,
+        autoClose: false,
+        autoCloseDelay: 3000
+    });
 
     const fetchItemsAndCategories = async () => {
         try {
@@ -57,12 +68,35 @@ const ItemMasterForm = () => {
             const subcategoriesData = await subcategoriesResponse.json();
             const itemsData = await itemsResponse.json();
 
+            console.log('Fetched data:', {
+                categories: categoriesData.length,
+                subcategories: subcategoriesData.length,
+                items: itemsData.length,
+                sampleSubcategory: subcategoriesData[0],
+                subcategoryFieldNames: subcategoriesData.map(sub => ({
+                    name: sub.subcategory_name,
+                    field1: sub.field1_name,
+                    field2: sub.field2_name,
+                    field3: sub.field3_name,
+                    field4: sub.field4_name,
+                    field5: sub.field5_name
+                }))
+            });
+
             setCategories(categoriesData);
             setSubcategories(subcategoriesData);
             setItems(itemsData);
         } catch (error) {
             console.error("Error fetching data:", error);
-            setModal({ show: true, title: "Error", message: "Failed to load data. Please try again.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "⚠️ Data Loading Error", 
+                message: "Failed to load data. Please refresh the page and try again.", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         } finally {
             setIsLoading(false);
         }
@@ -103,9 +137,12 @@ const ItemMasterForm = () => {
             console.error("Error generating item code:", error);
             setModal({ 
                 show: true, 
-                title: "Error", 
+                title: "❌ Generation Failed", 
                 message: "Failed to generate item code. Please try again.", 
-                onClose: () => setModal({ ...modal, show: false }) 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
             });
         }
     };
@@ -113,13 +150,25 @@ const ItemMasterForm = () => {
     // Update field labels when subcategory changes
     useEffect(() => {
         if (subcategoryId) {
-            const selectedSubcategory = subcategories.find(sub => sub.id == subcategoryId);
+            const selectedSubcategory = subcategories.find(sub => parseInt(sub.id) === parseInt(subcategoryId));
+            console.log('Updating field labels:', {
+                subcategoryId,
+                selectedSubcategory,
+                allSubcategories: subcategories.map(s => ({ id: s.id, name: s.subcategory_name }))
+            });
             if (selectedSubcategory) {
                 setField1Label(selectedSubcategory.field1_name || 'Description 1');
                 setField2Label(selectedSubcategory.field2_name || 'Description 2');
                 setField3Label(selectedSubcategory.field3_name || 'Description 3');
                 setField4Label(selectedSubcategory.field4_name || 'Description 4');
                 setField5Label(selectedSubcategory.field5_name || 'Description 5');
+                console.log('Field labels updated:', {
+                    field1: selectedSubcategory.field1_name || 'Description 1',
+                    field2: selectedSubcategory.field2_name || 'Description 2',
+                    field3: selectedSubcategory.field3_name || 'Description 3',
+                    field4: selectedSubcategory.field4_name || 'Description 4',
+                    field5: selectedSubcategory.field5_name || 'Description 5'
+                });
             }
         }
     }, [subcategoryId, subcategories]);
@@ -131,7 +180,19 @@ const ItemMasterForm = () => {
         }
     }, [categoryId, subcategoryId]);
 
-    const filteredSubcategories = subcategories.filter(sub => sub.category_id == categoryId);
+    const filteredSubcategories = subcategories.filter(sub => {
+        // Convert both to numbers for comparison to handle type mismatches
+        const subCategoryId = parseInt(sub.category_id);
+        const selectedCategoryId = parseInt(categoryId);
+        console.log('Subcategory filtering:', {
+            subcategory: sub.subcategory_name,
+            subCategoryId,
+            selectedCategoryId,
+            categoryId,
+            matches: subCategoryId === selectedCategoryId
+        });
+        return subCategoryId === selectedCategoryId;
+    });
 
     const resetForm = () => {
         setCategoryId('');
@@ -148,6 +209,7 @@ const ItemMasterForm = () => {
         setMinLevel(0);
         setUnitRate(0);
         setRackBin('');
+        setUom('PC');
         setEditingItemId(null);
         setField1Label('Description 1');
         setField2Label('Description 2');
@@ -172,13 +234,22 @@ const ItemMasterForm = () => {
         setMinLevel(parseFloat(item.min_level) || 0);
         setUnitRate(parseFloat(item.unit_rate) || 0);
         setRackBin(item.rack_bin || '');
+        setUom(item.uom || 'PC');
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!categoryId || !subcategoryId || !code || !itemName || !fullDescription) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Validation Error", 
+                message: "Please fill in all required fields:\n• Category\n• Subcategory\n• Item Code\n• Item Name\n• Full Description", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
             return;
         }
 
@@ -196,9 +267,12 @@ const ItemMasterForm = () => {
             stock,
             minLevel,
             unitRate,
+            uom,
             rackBin,
             userId
         };
+
+        setIsLoading(true);
 
         try {
             let response;
@@ -221,21 +295,44 @@ const ItemMasterForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Item ${editingItemId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchItemsAndCategories(); // Re-fetch items
+            setModal({ 
+                show: true, 
+                title: "🎉 Success!", 
+                message: `Item ${editingItemId ? 'updated' : 'added'} successfully!\n\n✅ Item Code: ${code}\n📦 Item Name: ${itemName}`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchItemsAndCategories();
+                }
+            });
         } catch (error) {
             console.error("Error saving item:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save item: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Operation Failed", 
+                message: `Failed to ${editingItemId ? 'update' : 'save'} item.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = (id, itemName) => {
         setModal({
             show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this item?",
+            title: "🗑️ Confirm Deletion",
+            message: `Are you sure you want to delete item "${itemName}"?\n\n⚠️ This action will:\n• Permanently remove the item\n• May affect inventory records\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
             showConfirmButton: true,
+            autoClose: false,
             onConfirm: async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/items/${id}`, {
@@ -245,14 +342,34 @@ const ItemMasterForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Item deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchItemsAndCategories(); // Re-fetch items
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "✅ Item Deleted", 
+                        message: `Item "${itemName}" has been successfully deleted.\n\n📊 Item records have been removed from the system.`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchItemsAndCategories();
+                        }
+                    });
                 } catch (error) {
                     console.error("Error deleting item:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete item: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "❌ Deletion Failed", 
+                        message: `Failed to delete item "${itemName}".\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
                 }
             },
-            onClose: () => setModal({ ...modal, show: false })
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
         });
     };
 
@@ -263,7 +380,7 @@ const ItemMasterForm = () => {
                 {/* Category and Subcategory Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <SelectField 
-                        label="Category*" 
+                        label="Category" 
                         id="categoryId" 
                         value={categoryId} 
                         onChange={(e) => {
@@ -274,7 +391,7 @@ const ItemMasterForm = () => {
                         required={true} 
                     />
                     <SelectField 
-                        label="Subcategory*" 
+                        label="Subcategory" 
                         id="subcategoryId" 
                         value={subcategoryId} 
                         onChange={(e) => setSubcategoryId(e.target.value)} 
@@ -286,7 +403,7 @@ const ItemMasterForm = () => {
                 {/* Item Code */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <InputField 
-                        label="Item Code*" 
+                        label="Item Code" 
                         id="code" 
                         value={code} 
                         onChange={(e) => setCode(e.target.value)} 
@@ -338,7 +455,7 @@ const ItemMasterForm = () => {
                 {/* Full Description (Auto-generated) */}
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4">
                     <InputField 
-                        label="Full Description*" 
+                        label="Full Description" 
                         id="fullDescription" 
                         value={fullDescription} 
                         onChange={(e) => setFullDescription(e.target.value)} 
@@ -351,7 +468,7 @@ const ItemMasterForm = () => {
                 {/* Item Name (User can select from full description) */}
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4">
                     <InputField 
-                        label="Item Name*" 
+                        label="Item Name" 
                         id="itemName" 
                         value={itemName} 
                         onChange={(e) => setItemName(e.target.value)} 
@@ -386,6 +503,18 @@ const ItemMasterForm = () => {
                         value={unitRate} 
                         onChange={(e) => setUnitRate(parseFloat(e.target.value) || 0)} 
                         min="0"
+                    />
+                </div>
+
+                {/* UOM */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+                    <InputField 
+                        label="UOM*" 
+                        id="uom" 
+                        value={uom} 
+                        onChange={(e) => setUom(e.target.value)} 
+                        required={true} 
+                        placeholder="e.g., KG, PC, LTR, etc."
                     />
                 </div>
 
@@ -431,13 +560,14 @@ const ItemMasterForm = () => {
                                 <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Category</th>
                                 <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Stock</th>
                                 <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Rate</th>
+                                <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">UOM</th>
                                 <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {items.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="py-4 px-4 text-center text-gray-500">No items registered yet.</td>
+                                    <td colSpan="7" className="py-4 px-4 text-center text-gray-500">No items registered yet.</td>
                                 </tr>
                             ) : (
                                 items.map((item) => (
@@ -447,9 +577,10 @@ const ItemMasterForm = () => {
                                         <td className="py-3 px-4 text-sm text-gray-800">{item.category_name}</td>
                                         <td className="py-3 px-4 text-sm text-gray-800">{item.stock}</td>
                                         <td className="py-3 px-4 text-sm text-gray-800">₹{item.unit_rate}</td>
+                                        <td className="py-3 px-4 text-sm text-gray-800">{item.uom}</td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(item)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(item.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(item.id, item.item_name)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
                                         </td>
                                     </tr>
                                 ))
@@ -462,12 +593,15 @@ const ItemMasterForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
             />
         </div>
     );
 };
 
-export default ItemMasterForm; 
+export default ItemMasterForm;

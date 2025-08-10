@@ -54,9 +54,6 @@ const App = () => {
                             <h1 className="text-2xl font-bold text-gray-800">
                                 Flour Mill ERP System
                             </h1>
-                            <div className="flex items-center space-x-4">
-                                <span className="text-sm text-gray-600">User ID: {userId}</span>
-                            </div>
                         </div>
                     </header>
 

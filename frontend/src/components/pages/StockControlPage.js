@@ -176,6 +176,7 @@ const StockControlPage = () => {
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Stock</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Min Level</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Unit Rate</th>
+                                    <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">UOM</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Total Value</th>
                                     <th className="py-3 px-4 text-left text-sm font-semibold text-gray-700">Status</th>
                                 </tr>
@@ -183,7 +184,7 @@ const StockControlPage = () => {
                             <tbody>
                                 {filteredMainStock.length === 0 ? (
                                     <tr>
-                                        <td colSpan="8" className="py-4 px-4 text-center text-gray-500">No items found.</td>
+                                        <td colSpan="9" className="py-4 px-4 text-center text-gray-500">No items found.</td>
                                     </tr>
                                 ) : (
                                     filteredMainStock.map((item) => {
@@ -198,6 +199,7 @@ const StockControlPage = () => {
                                                 <td className="py-3 px-4 text-sm text-gray-800 font-semibold">{item.stock}</td>
                                                 <td className="py-3 px-4 text-sm text-gray-800">{item.min_level}</td>
                                                 <td className="py-3 px-4 text-sm text-gray-800">₹{item.unit_rate}</td>
+                                                <td className="py-3 px-4 text-sm text-gray-800">{item.uom}</td>
                                                 <td className="py-3 px-4 text-sm text-gray-800 font-semibold">₹{totalValue.toLocaleString()}</td>
                                                 <td className="py-3 px-4 text-sm">
                                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${stockStatus.color}`}>

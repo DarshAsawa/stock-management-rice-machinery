@@ -43,7 +43,7 @@ const ItemCatalogOverviewPage = () => {
         const matchesSearch = item.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             item.item_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             item.full_description.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesCategory = !filterCategory || item.category_id == filterCategory;
+        const matchesCategory = !filterCategory || item.category_id === filterCategory;
         return matchesSearch && matchesCategory;
     });
 

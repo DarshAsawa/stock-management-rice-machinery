@@ -14,7 +14,7 @@ const IssueNoteInternalForm = () => {
         { label: 'Quality Control', value: 'Quality Control' },
         { label: 'R&D', value: 'R&D' }
     ]);
-    const [rawMaterialItems, setRawMaterialItems] = useState([]); // Only raw materials from main stock
+    const [rawMaterialItems, setRawMaterialItems] = useState([]);
     const [recentEntries, setRecentEntries] = useState([]);
     const [department, setDepartment] = useState('');
     const [issueNo, setIssueNo] = useState('');
@@ -24,7 +24,17 @@ const IssueNoteInternalForm = () => {
     const [editingEntryId, setEditingEntryId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [modal, setModal] = useState({ show: false, title: '', message: '', showConfirmButton: false, onConfirm: null });
+    const [modal, setModal] = useState({ 
+        show: false, 
+        title: '', 
+        message: '', 
+        type: 'info',
+        showConfirmButton: false, 
+        onConfirm: null,
+        onClose: null,
+        autoClose: false,
+        autoCloseDelay: 3000
+    });
 
     const generateIssueNumber = async () => {
         try {
@@ -37,9 +47,12 @@ const IssueNoteInternalForm = () => {
             console.error("Error generating issue number:", error);
             setModal({ 
                 show: true, 
-                title: "Error", 
+                title: "❌ Generation Failed", 
                 message: "Failed to generate issue number. Please try again.", 
-                onClose: () => setModal({ ...modal, show: false }) 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
             });
         }
     };
@@ -47,7 +60,6 @@ const IssueNoteInternalForm = () => {
     const fetchRawMaterials = useCallback(async () => {
         setIsLoading(true);
         try {
-            // Fetch only raw materials from main stock
             const response = await fetch(`${API_BASE_URL}/items/by-category/Raw Material`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
@@ -63,7 +75,15 @@ const IssueNoteInternalForm = () => {
             })));
         } catch (error) {
             console.error("Error fetching raw materials for issue note:", error);
-            setModal({ show: true, title: "Error", message: "Failed to load raw materials. Please try again.", onClose: () => setModal(m => ({ ...m, show: false })) });
+            setModal({ 
+                show: true, 
+                title: "⚠️ Data Loading Error", 
+                message: "Failed to load raw materials. Please refresh the page and try again.", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         } finally {
             setIsLoading(false);
         }
@@ -75,7 +95,7 @@ const IssueNoteInternalForm = () => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             
             const data = await response.json();
-            setRecentEntries(data.slice(0, 10)); // Show last 10 entries
+            setRecentEntries(data.slice(0, 10));
         } catch (error) {
             console.error("Error fetching recent entries:", error);
         }
@@ -86,7 +106,6 @@ const IssueNoteInternalForm = () => {
         fetchRecentEntries();
     }, [fetchRawMaterials, fetchRecentEntries]);
 
-    // Auto-generate issue number when form is empty (new entry)
     useEffect(() => {
         if (!editingEntryId && !issueNo) {
             generateIssueNumber();
@@ -98,10 +117,16 @@ const IssueNoteInternalForm = () => {
         updatedItems[index][field] = value;
 
         if (field === 'itemId') {
-            const selectedItem = rawMaterialItems.find(i => i.value === Number(value));
+            const selectedItem = rawMaterialItems.find(i => parseInt(i.value) === parseInt(value));
+            
             if (selectedItem) {
-                updatedItems[index].unitRate = selectedItem.unitRate;
-                updatedItems[index].availableStock = selectedItem.stock;
+                updatedItems[index].unitRate = selectedItem.unitRate || 0;
+                updatedItems[index].availableStock = selectedItem.stock || 0;
+                updatedItems[index].uom = selectedItem.uom || 'PC';
+            } else {
+                updatedItems[index].uom = 'PC';
+                updatedItems[index].unitRate = 0;
+                updatedItems[index].availableStock = 0;
             }
         }
         setIssuedItems(updatedItems);
@@ -133,9 +158,12 @@ const IssueNoteInternalForm = () => {
                 const selectedItem = rawMaterialItems.find(i => i.value === Number(item.itemId));
                 setModal({ 
                     show: true, 
-                    title: "Insufficient Stock", 
-                    message: `${selectedItem?.label || 'Selected item'} has only ${item.availableStock} units available in main stock, but you're trying to issue ${item.qty} units.`, 
-                    onClose: () => setModal({ ...modal, show: false }) 
+                    title: "⚠️ Insufficient Stock Alert", 
+                    message: `${selectedItem?.label || 'Selected item'} has only ${item.availableStock} units available in main stock, but you're trying to issue ${item.qty} units.\n\nPlease adjust the quantity to proceed.`, 
+                    type: 'warning',
+                    showConfirmButton: false,
+                    autoClose: false,
+                    onClose: () => setModal(prev => ({ ...prev, show: false }))
                 });
                 return false;
             }
@@ -145,89 +173,147 @@ const IssueNoteInternalForm = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
-        // Validate stock before submission
-        if (!validateStock()) {
-            return;
-        }
-
+        
         if (!department || !issueNo || !issueDate || !issuedBy || issuedItems.length === 0) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Validation Error", 
+                message: "Please fill in all required fields:\n• Department\n• Issue Number\n• Issue Date\n• Issued By\n• At least one item", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
             return;
         }
 
-        // Validate items
         for (const item of issuedItems) {
             if (!item.itemId || item.qty <= 0) {
-                setModal({ show: true, title: "Validation Error", message: "Please fill in all item details correctly.", onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "❌ Item Validation Error", 
+                    message: "Please ensure all items have:\n• Valid item selection\n• Quantity greater than 0\n\nCheck all item rows before submitting.", 
+                    type: 'error',
+                    showConfirmButton: false,
+                    autoClose: false,
+                    onClose: () => setModal(prev => ({ ...prev, show: false }))
+                });
                 return;
             }
         }
 
+        if (!validateStock()) {
+            return;
+        }
+
         const issueNoteData = {
+            department,
             issueNo,
             issueDate,
-            department,
             issuedBy,
-            items: issuedItems,
+            items: issuedItems.map(item => ({
+                itemId: item.itemId,
+                unitRate: item.unitRate,
+                uom: item.uom,
+                qty: item.qty,
+                remark: item.remark
+            })),
             userId
         };
 
+        setIsLoading(true);
+
         try {
             let response;
+            
             if (editingEntryId) {
                 response = await fetch(`${API_BASE_URL}/issue-notes-internal/${editingEntryId}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify(issueNoteData)
                 });
             } else {
                 response = await fetch(`${API_BASE_URL}/issue-notes-internal`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify(issueNoteData)
                 });
             }
-
+            
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
+            
+            const result = await response.json();
+            
+            setModal({ 
+                show: true, 
+                title: "🎉 Success!", 
+                message: `Issue Note Internal ${editingEntryId ? 'updated' : 'created'} successfully!\n\n✅ Stock has been moved to ${department} floor.\n📋 Issue Number: ${issueNo}`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchRecentEntries();
+                    if (!editingEntryId) {
+                        generateIssueNumber();
+                    }
+                }
+            });
 
-            setModal({ show: true, title: "Success", message: `Issue Note ${editingEntryId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchRecentEntries(); // Re-fetch recent entries
         } catch (error) {
             console.error("Error saving issue note:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save issue note: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "❌ Operation Failed", 
+                message: `Failed to ${editingEntryId ? 'update' : 'create'} issue note.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleEdit = (entry) => {
         setEditingEntryId(entry.id);
+        setDepartment(entry.department || '');
         setIssueNo(entry.issue_no || '');
         setIssueDate(entry.issue_date ? new Date(entry.issue_date).toISOString().split('T')[0] : '');
-        setDepartment(entry.department || '');
         setIssuedBy(entry.issued_by || '');
-        
+
         if (entry.items && entry.items.length > 0) {
             setIssuedItems(entry.items.map(item => ({
                 itemId: item.item_id,
-                unitRate: item.unit_rate,
-                uom: item.uom,
-                qty: item.quantity,
+                unitRate: parseFloat(item.unit_rate) || 0,
+                uom: item.uom || 'PC',
+                qty: parseInt(item.qty) || 0,
                 remark: item.remark || '',
-                availableStock: item.available_stock || 0
+                availableStock: 0
             })));
+        } else {
+            setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
         }
     };
 
-    const handleDelete = (entryId) => {
+    const handleDelete = (entryId, issueNo) => {
         setModal({
             show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this issue note?",
+            title: "🗑️ Confirm Deletion",
+            message: `Are you sure you want to delete Issue Note ${issueNo}?\n\n⚠️ This action will:\n• Permanently remove the issue note\n• Reverse all material movements\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
             showConfirmButton: true,
+            autoClose: false,
             onConfirm: async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/issue-notes-internal/${entryId}`, {
@@ -237,19 +323,38 @@ const IssueNoteInternalForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Issue note deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchRecentEntries(); // Re-fetch recent entries
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "✅ Issue Note Deleted", 
+                        message: `Issue note ${issueNo} has been successfully deleted.\n\n🔄 Material movements have been reversed.\n📊 Inventory levels have been updated.`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchRecentEntries();
+                        }
+                    });
                 } catch (error) {
                     console.error("Error deleting issue note:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete issue note: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "❌ Deletion Failed", 
+                        message: `Failed to delete issue note ${issueNo}.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
                 }
             },
-            onClose: () => setModal({ ...modal, show: false })
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
         });
     };
 
     const handlePrint = (entry) => {
-        // Create a print-friendly version of the issue note
         const printWindow = window.open('', '_blank');
         const printContent = `
             <html>
@@ -420,7 +525,6 @@ const IssueNoteInternalForm = () => {
                             readOnly={true}
                             className="bg-gray-100"
                         />
-
                     </div>
                     <InputField 
                         label="Issue Date" 
@@ -470,8 +574,10 @@ const IssueNoteInternalForm = () => {
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                onChange={() => {}}
+                                readOnly={true} 
                                 required={true} 
+                                className="bg-gray-100"
                             />
                             <InputField 
                                 label="Quantity" 
@@ -514,7 +620,6 @@ const IssueNoteInternalForm = () => {
                     </Button>
                 </div>
 
-                {/* Form Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-gray-200">
                     <Button 
                         type="submit"
@@ -576,7 +681,7 @@ const IssueNoteInternalForm = () => {
                                         </td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(entry)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(entry.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(entry.id, entry.issue_no)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2 mr-2">Delete</Button>
                                             <Button onClick={() => handlePrint(entry)} className="bg-blue-500 hover:bg-blue-700 text-white text-xs py-1 px-2">Print</Button>
                                         </td>
                                     </tr>
@@ -590,9 +695,12 @@ const IssueNoteInternalForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
             />
         </div>
     );

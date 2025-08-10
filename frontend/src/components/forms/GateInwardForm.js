@@ -93,15 +93,55 @@ const GateInwardForm = () => {
     const handleItemChange = (index, field, value) => {
         const newItems = [...itemsList];
         newItems[index] = { ...newItems[index], [field]: value };
-        
+        // Auto-fill UOM and Unit Rate when itemId changes
+        if (field === 'itemId') {
+            const selectedItem = items.find(i => parseInt(i.id) === parseInt(value));
+            console.log('Item selection for UOM and rate auto-fill:', {
+                selectedValue: value,
+                selectedItem,
+                allItems: items.map(item => ({ id: item.id, name: item.item_name, uom: item.uom, rate: item.unit_rate }))
+            });
+            if (selectedItem) {
+                newItems[index].uom = selectedItem.uom || 'PC';
+                newItems[index].unitRate = parseFloat(selectedItem.unit_rate) || 0;
+                console.log('UOM and rate auto-filled:', selectedItem.uom, selectedItem.unit_rate);
+            } else {
+                newItems[index].uom = 'PC';
+                newItems[index].unitRate = 0;
+                console.log('No item found, using defaults');
+            }
+        }
         // Calculate amount if unit rate or quantity changes
         if (field === 'unitRate' || field === 'quantity') {
             const unitRate = parseFloat(newItems[index].unitRate) || 0;
             const quantity = parseFloat(newItems[index].quantity) || 0;
             newItems[index].amount = unitRate * quantity;
         }
-        
         setItemsList(newItems);
+    };
+    
+    const handleEdit = (entry) => {
+        setEditingEntryId(entry.id);
+        setGrnNumber(entry.grn_number || '');
+        setGrnDate(entry.grn_date ? new Date(entry.grn_date).toISOString().split('T')[0] : '');
+        setBillNo(entry.bill_no || '');
+        setBillDate(entry.bill_date ? new Date(entry.bill_date).toISOString().split('T')[0] : '');
+        setSupplierId(entry.supplier_id || '');
+        setPaymentTerms(entry.payment_terms || '');
+
+        // Load items if available
+        if (entry.items && entry.items.length > 0) {
+            setItemsList(entry.items.map(item => ({
+                itemId: item.item_id,
+                unitRate: parseFloat(item.unit_rate) || 0,
+                uom: item.uom || 'PC',
+                quantity: parseInt(item.quantity) || 0,
+                amount: parseFloat(item.amount) || 0,
+                remark: item.remark || ''
+            })));
+        } else {
+            setItemsList([{ itemId: '', unitRate: 0, uom: 'PC', quantity: 0, amount: 0, remark: '' }]);
+        }
     };
 
     const addItemRow = () => {
@@ -129,20 +169,32 @@ const GateInwardForm = () => {
         e.preventDefault();
         
         if (!grnNumber || !grnDate || !supplierId || itemsList.length === 0) {
-            setModal({ show: true, title: "Validation Error", message: "Please fill in all required fields.", onClose: () => setModal({ ...modal, show: false }) });
+            setModal({ 
+                show: true, 
+                title: "Validation Error", 
+                message: "Please fill in all required fields: GRN Number, GRN Date, Party, and at least one item.", 
+                type: 'error',
+                onClose: () => setModal({ ...modal, show: false }) 
+            });
             return;
         }
 
         // Validate items
         for (const item of itemsList) {
             if (!item.itemId || item.quantity <= 0) {
-                setModal({ show: true, title: "Validation Error", message: "Please fill in all item details correctly.", onClose: () => setModal({ ...modal, show: false }) });
+                setModal({ 
+                    show: true, 
+                    title: "Validation Error", 
+                    message: "Please ensure all items have valid details: Item selection and quantity greater than 0.", 
+                    type: 'error',
+                    onClose: () => setModal({ ...modal, show: false }) 
+                });
                 return;
             }
         }
 
         const gateInwardData = {
-            grn: grnNumber, // Map grnNumber to grn for backend
+            grn: grnNumber,
             grnDate,
             billNo: billNo || null,
             billDate: billDate || null,
@@ -152,7 +204,7 @@ const GateInwardForm = () => {
                 itemId: item.itemId,
                 unitRate: item.unitRate,
                 uom: item.uom,
-                qty: item.quantity, // Map quantity to qty for backend
+                qty: item.quantity,
                 amount: item.amount,
                 remark: item.remark
             })),
@@ -180,33 +232,28 @@ const GateInwardForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Gate Inward ${editingEntryId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
+            // Success message with auto-close
+            setModal({ 
+                show: true, 
+                title: "Success!", 
+                message: `Gate Inward entry ${editingEntryId ? 'updated' : 'created'} successfully! Stock levels have been updated accordingly.`, 
+                type: 'success',
+                autoClose: true,
+                autoCloseDelay: 2000,
+                onClose: () => setModal({ ...modal, show: false }) 
+            });
+            
             resetForm();
-            fetchRecentEntries(); // Re-fetch recent entries
+            fetchRecentEntries();
         } catch (error) {
             console.error("Error saving gate inward:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save gate inward: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
-        }
-    };
-
-    const handleEdit = (entry) => {
-        setEditingEntryId(entry.id);
-        setGrnNumber(entry.grn_number || '');
-        setGrnDate(entry.grn_date ? new Date(entry.grn_date).toISOString().split('T')[0] : '');
-        setBillNo(entry.bill_no || '');
-        setBillDate(entry.bill_date ? new Date(entry.bill_date).toISOString().split('T')[0] : '');
-        setSupplierId(entry.supplier_id || '');
-        setPaymentTerms(entry.payment_terms || '');
-        
-        if (entry.items && entry.items.length > 0) {
-            setItemsList(entry.items.map(item => ({
-                itemId: item.item_id,
-                unitRate: item.unit_rate,
-                uom: item.uom,
-                quantity: item.quantity,
-                amount: item.amount,
-                remark: item.remark || ''
-            })));
+            setModal({ 
+                show: true, 
+                title: "Error", 
+                message: `Failed to save gate inward entry. ${error.message}`, 
+                type: 'error',
+                onClose: () => setModal({ ...modal, show: false }) 
+            });
         }
     };
 
@@ -214,7 +261,8 @@ const GateInwardForm = () => {
         setModal({
             show: true,
             title: "Confirm Deletion",
-            message: "Are you sure you want to delete this gate inward entry?",
+            message: "Are you sure you want to delete this gate inward entry? This action cannot be undone and will reverse stock changes.",
+            type: 'warning',
             showConfirmButton: true,
             onConfirm: async () => {
                 try {
@@ -225,11 +273,27 @@ const GateInwardForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Gate Inward entry deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchRecentEntries(); // Re-fetch recent entries
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "Deleted Successfully", 
+                        message: "Gate inward entry has been deleted and stock levels have been restored.", 
+                        type: 'success',
+                        autoClose: true,
+                        autoCloseDelay: 2000,
+                        onClose: () => setModal({ ...modal, show: false }) 
+                    });
+                    
+                    fetchRecentEntries();
                 } catch (error) {
                     console.error("Error deleting gate inward:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete gate inward: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "Deletion Failed", 
+                        message: `Failed to delete gate inward entry. ${error.message}`, 
+                        type: 'error',
+                        onClose: () => setModal({ ...modal, show: false }) 
+                    });
                 }
             },
             onClose: () => setModal({ ...modal, show: false })
@@ -471,8 +535,10 @@ const GateInwardForm = () => {
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={(e) => handleItemChange(index, 'uom', e.target.value)} 
+                                onChange={() => {}} // Empty function for read-only fields
+                                readOnly={true} 
                                 required={true} 
+                                className="bg-gray-100"
                             />
                             <InputField 
                                 label="Quantity" 
@@ -577,6 +643,9 @@ const GateInwardForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}

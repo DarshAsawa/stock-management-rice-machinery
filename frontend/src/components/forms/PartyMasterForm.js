@@ -65,6 +65,18 @@ const PartyMasterForm = () => {
         }
     };
 
+    const handleEdit = (party) => {
+        setEditingPartyId(party.id);
+        setPartyCode(party.party_code);
+        setPartyName(party.party_name);
+        setGst(party.gst_number);
+        setAddress(party.address);
+        setCity(party.city);
+        setBankAccount(party.bank_account);
+        setBankName(party.bank_name);
+        setIfscCode(party.ifsc_code);
+    };
+
     const resetForm = () => {
         setPartyCode('');
         setPartyName('');
@@ -121,17 +133,6 @@ const PartyMasterForm = () => {
         }
     };
 
-    const handleEdit = (party) => {
-        setEditingPartyId(party.id);
-        setPartyCode(party.party_code);
-        setPartyName(party.party_name);
-        setGst(party.gst_number);
-        setAddress(party.address);
-        setCity(party.city);
-        setBankAccount(party.bank_account);
-        setBankName(party.bank_name);
-        setIfscCode(party.ifsc_code);
-    };
 
     const handleDelete = (id) => {
         setModal({
