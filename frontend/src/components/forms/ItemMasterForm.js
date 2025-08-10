@@ -205,9 +205,9 @@ const ItemMasterForm = () => {
         setDesc5('');
         setFullDescription('');
         setItemName('');
-        setStock(0);
-        setMinLevel(0);
-        setUnitRate(0);
+        setStock('');
+        setMinLevel('');
+        setUnitRate('');
         setRackBin('');
         setUom('PC');
         setEditingItemId(null);

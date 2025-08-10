@@ -91,6 +91,21 @@ const PartyMasterForm = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Enhanced validation with structured error message
+        if (!partyName || !gst || !address || !city || !bankAccount || !bankName || !ifscCode) {
+            setModal({ 
+                show: true, 
+                title: "Validation Error", 
+                message: "Please fill in all required fields:\n• Party Name\n• GST Number\n• Address\n• City\n• Bank Account\n• Bank Name\n• IFSC Code", 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
+            return;
+        }
+
         const partyData = {
             partyCode,
             partyName,
@@ -100,7 +115,7 @@ const PartyMasterForm = () => {
             bankAccount,
             bankName,
             ifscCode,
-            userId // Pass userId to backend
+            userId
         };
 
         try {
@@ -124,22 +139,45 @@ const PartyMasterForm = () => {
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
-            setModal({ show: true, title: "Success", message: `Party ${editingPartyId ? 'updated' : 'added'} successfully!`, onClose: () => setModal({ ...modal, show: false }) });
-            resetForm();
-            fetchParties(); // Re-fetch parties to update the list
+            // Enhanced success modal with auto-close and detailed feedback
+            setModal({ 
+                show: true, 
+                title: "🎉 Success!", 
+                message: `Party ${editingPartyId ? 'updated' : 'added'} successfully!\n\n✅ Party Code: ${partyCode}\n👥 Party Name: ${partyName}`, 
+                type: 'success',
+                showConfirmButton: false,
+                autoClose: true,
+                autoCloseDelay: 3000,
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchParties();
+                }
+            });
         } catch (error) {
             console.error("Error saving party:", error);
-            setModal({ show: true, title: "Error", message: `Failed to save party: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+            // Enhanced error modal with detailed feedback
+            setModal({ 
+                show: true, 
+                title: "Operation Failed", 
+                message: `Failed to ${editingPartyId ? 'update' : 'save'} party.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                type: 'error',
+                showConfirmButton: false,
+                autoClose: false,
+                onClose: () => setModal(prev => ({ ...prev, show: false }))
+            });
         }
     };
 
 
-    const handleDelete = (id) => {
+    const handleDelete = (id, partyName) => {
         setModal({
             show: true,
-            title: "Confirm Deletion",
-            message: "Are you sure you want to delete this party?",
+            title: "🗑️ Confirm Deletion",
+            message: `Are you sure you want to delete party "${partyName}"?\n\n⚠️ This action will:\n• Permanently remove the party\n• May affect related transactions\n• Cannot be undone\n\nProceed with deletion?`,
+            type: 'warning',
             showConfirmButton: true,
+            autoClose: false,
             onConfirm: async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/parties/${id}`, {
@@ -149,14 +187,34 @@ const PartyMasterForm = () => {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    setModal({ show: true, title: "Success", message: "Party deleted successfully!", onClose: () => setModal({ ...modal, show: false }) });
-                    fetchParties(); // Re-fetch parties
+                    
+                    setModal({ 
+                        show: true, 
+                        title: "Party Deleted", 
+                        message: `Party "${partyName}" has been successfully deleted.\n\n📊 Party records have been removed from the system.`, 
+                        type: 'success',
+                        showConfirmButton: false,
+                        autoClose: true,
+                        autoCloseDelay: 3000,
+                        onClose: () => {
+                            setModal(prev => ({ ...prev, show: false }));
+                            fetchParties();
+                        }
+                    });
                 } catch (error) {
                     console.error("Error deleting party:", error);
-                    setModal({ show: true, title: "Error", message: `Failed to delete party: ${error.message}`, onClose: () => setModal({ ...modal, show: false }) });
+                    setModal({ 
+                        show: true, 
+                        title: "Deletion Failed", 
+                        message: `Failed to delete party "${partyName}".\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`, 
+                        type: 'error',
+                        showConfirmButton: false,
+                        autoClose: false,
+                        onClose: () => setModal(prev => ({ ...prev, show: false }))
+                    });
                 }
             },
-            onClose: () => setModal({ ...modal, show: false })
+            onClose: () => setModal(prev => ({ ...prev, show: false }))
         });
     };
 
@@ -228,7 +286,7 @@ const PartyMasterForm = () => {
                                         <td className="py-3 px-4 text-sm text-gray-800">{party.city}</td>
                                         <td className="py-3 px-4 text-sm">
                                             <Button onClick={() => handleEdit(party)} className="bg-green-500 hover:bg-green-700 text-white text-xs py-1 px-2 mr-2">Edit</Button>
-                                            <Button onClick={() => handleDelete(party.id)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
+                                            <Button onClick={() => handleDelete(party.id, party.party_name)} className="bg-red-500 hover:bg-red-700 text-white text-xs py-1 px-2">Delete</Button>
                                         </td>
                                     </tr>
                                 ))
@@ -241,9 +299,12 @@ const PartyMasterForm = () => {
                 show={modal.show}
                 title={modal.title}
                 message={modal.message}
+                type={modal.type}
                 onClose={modal.onClose}
                 onConfirm={modal.onConfirm}
                 showConfirmButton={modal.showConfirmButton}
+                autoClose={modal.autoClose}
+                autoCloseDelay={modal.autoCloseDelay}
             />
         </div>
     );
