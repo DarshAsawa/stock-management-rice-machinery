@@ -384,12 +384,6 @@ const GateInwardForm = () => {
                         <h2>GRN No: ${entry.grn_number}</h2>
                     </div>
                     
-                    <div class="company-info">
-                        <h3>Flour Mill ERP System</h3>
-                        <p>Address: [Your Company Address]</p>
-                        <p>Phone: [Your Phone Number] | Email: [Your Email]</p>
-                    </div>
-                    
                     <div class="grn-details">
                         <div>
                             <p><strong>GRN Date:</strong> ${new Date(entry.grn_date).toLocaleDateString()}</p>
@@ -529,8 +523,12 @@ const GateInwardForm = () => {
                                 type="number" 
                                 step="0.01" 
                                 value={item.unitRate} 
-                                onChange={(e) => handleItemChange(index, 'unitRate', parseFloat(e.target.value) || 0)} 
-                                required={true} 
+                                onChange={() => {}} // Empty function for read-only fields
+                                required={true}
+                                readOnly={true}
+                                className="bg-gray-100 text-gray-600 pointer-events-none"
+                                style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                                labelClassName="text-gray-500" 
                             />
                             <InputField 
                                 label="UOM" 
@@ -538,7 +536,9 @@ const GateInwardForm = () => {
                                 onChange={() => {}} // Empty function for read-only fields
                                 readOnly={true} 
                                 required={true} 
-                                className="bg-gray-100"
+                                className="bg-gray-100 text-gray-600 pointer-events-none"
+                                style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                                labelClassName="text-gray-500"
                             />
                             <InputField 
                                 label="Quantity" 

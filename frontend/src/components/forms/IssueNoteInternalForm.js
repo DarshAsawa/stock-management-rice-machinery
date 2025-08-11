@@ -437,12 +437,6 @@ const IssueNoteInternalForm = () => {
                         <h2>Issue No: ${entry.issue_no}</h2>
                     </div>
                     
-                    <div class="company-info">
-                        <h3>Flour Mill ERP System</h3>
-                        <p>Address: [Your Company Address]</p>
-                        <p>Phone: [Your Phone Number] | Email: [Your Email]</p>
-                    </div>
-                    
                     <div class="issue-details">
                         <div>
                             <p><strong>Issue Date:</strong> ${new Date(entry.issue_date).toLocaleDateString()}</p>
@@ -568,16 +562,22 @@ const IssueNoteInternalForm = () => {
                                 type="number" 
                                 step="0.01" 
                                 value={item.unitRate} 
+                                onChange={() => {}} // Empty function for read-only fields
+                                required={true}
                                 readOnly={true}
-                                className="bg-gray-100"
+                                className="bg-gray-100 text-gray-600 pointer-events-none"
+                                style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                                labelClassName="text-gray-500" 
                             />
                             <InputField 
                                 label="UOM" 
                                 value={item.uom} 
-                                onChange={() => {}}
+                                onChange={() => {}} // Empty function for read-only fields
                                 readOnly={true} 
                                 required={true} 
-                                className="bg-gray-100"
+                                className="bg-gray-100 text-gray-600 pointer-events-none"
+                                style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                                labelClassName="text-gray-500"
                             />
                             <InputField 
                                 label="Quantity" 

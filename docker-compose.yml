@@ -46,7 +46,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - FAST_REFRESH=true
-      - REACT_APP_API_BASE_URL=http://localhost:3001/api
+      - REACT_APP_API_BASE_URL=http://192.168.1.233:3001/api
     depends_on:
       - backend # Frontend depends on backend to be available
     stdin_open: true
