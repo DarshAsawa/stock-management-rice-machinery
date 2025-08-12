@@ -69,6 +69,7 @@ const IssueNoteInternalForm = () => {
                 value: i.id, 
                 unitRate: parseFloat(i.unit_rate), 
                 stock: i.stock,
+                uom: i.uom, // Make sure UOM is included
                 itemCode: i.item_code,
                 description: i.full_description,
                 categoryName: i.category_name
@@ -122,7 +123,7 @@ const IssueNoteInternalForm = () => {
             if (selectedItem) {
                 updatedItems[index].unitRate = selectedItem.unitRate || 0;
                 updatedItems[index].availableStock = selectedItem.stock || 0;
-                updatedItems[index].uom = selectedItem.uom || 'PC';
+                updatedItems[index].uom = selectedItem.uom || 'PC'; // This should get the UOM from the item
             } else {
                 updatedItems[index].uom = 'PC';
                 updatedItems[index].unitRate = 0;
@@ -145,7 +146,7 @@ const IssueNoteInternalForm = () => {
 
     const resetForm = () => {
         setDepartment('');
-        setIssueNo('');
+        // setIssueNo('');
         setIssueDate('');
         setIssuedBy('');
         setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
@@ -182,7 +183,15 @@ const IssueNoteInternalForm = () => {
                 type: 'error',
                 showConfirmButton: false,
                 autoClose: false,
-                onClose: () => setModal(prev => ({ ...prev, show: false }))
+                onClose: () => {
+                    setModal(prev => ({ ...prev, show: false }));
+                    resetForm();
+                    fetchRecentEntries();
+                    // Generate new issue number only for new entries, not edits
+                    if (!editingEntryId) {
+                        generateIssueNumber();
+                    }
+                }
             });
             return;
         }
@@ -297,12 +306,12 @@ const IssueNoteInternalForm = () => {
                 itemId: item.item_id,
                 unitRate: parseFloat(item.unit_rate) || 0,
                 uom: item.uom || 'PC',
-                qty: parseInt(item.qty) || 0,
+                qty: parseFloat(item.quantity || item.qty) || 0, // Check both quantity and qty fields
                 remark: item.remark || '',
-                availableStock: 0
+                availableStock: item.stock || 0 // Add available stock if present
             })));
         } else {
-            setIssuedItems([{ itemId: '', unitRate: 0, uom: '', qty: 0, remark: '', availableStock: 0 }]);
+            setIssuedItems([{ itemId: '', unitRate: 0, uom: 'PC', qty: 0, remark: '', availableStock: 0 }]);
         }
     };
 
@@ -671,7 +680,7 @@ const IssueNoteInternalForm = () => {
                                                     {entry.items.map((item, index) => (
                                                         <div key={index} className="text-xs">
                                                             <span className="font-medium">{item.item_name}</span>
-                                                            <span className="text-gray-500"> - Qty: {item.qty}</span>
+                                                            <span className="text-gray-500"> - Qty: {item.quantity || item.qty || 0}</span>
                                                         </div>
                                                     ))}
                                                 </div>

@@ -155,7 +155,7 @@ const GateInwardForm = () => {
     };
 
     const resetForm = () => {
-        setGrnNumber('');
+        // setGrnNumber('');
         setGrnDate('');
         setBillNo('');
         setBillDate('');
@@ -245,6 +245,12 @@ const GateInwardForm = () => {
             
             resetForm();
             fetchRecentEntries();
+            
+            // Generate new GRN number for next entry (only for new entries, not edits)
+            if (!editingEntryId) {
+                await generateGrnNumber();
+            }
+            
         } catch (error) {
             console.error("Error saving gate inward:", error);
             setModal({ 

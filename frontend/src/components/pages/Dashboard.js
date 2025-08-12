@@ -123,9 +123,9 @@ const DashboardPage = ({ userId, setCurrentPage }) => {
     return (
         <div className="bg-white p-8 rounded-xl shadow-lg">
             <div className="mb-6">
-                <h2 className="text-3xl font-extrabold text-gray-800 border-b-2 border-blue-500 pb-2">
-                    Flour Mill ERP Dashboard
-                </h2>
+                <h3 className="text-3xl font-extrabold text-gray-800 border-b-2 border-blue-500 pb-2">
+                    DASHBOARD
+                </h3>
             </div>
 
             {/* Analytics Overview */}
