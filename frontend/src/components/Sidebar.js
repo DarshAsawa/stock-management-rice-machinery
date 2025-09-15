@@ -4,22 +4,7 @@ import SidebarItem from './ui/SidebarItem';
 const Sidebar = ({ sidebarOpen, setSidebarOpen, currentPage, setCurrentPage }) => {
     return (
         <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-gradient-to-b from-blue-800 to-blue-900 text-white transition-all duration-300 ease-in-out flex flex-col shadow-lg`}>
-            {/* Header */}
-            <div className="p-4 border-b border-blue-700">
-                <div className="flex items-center justify-between">
-                    <h1 className={`font-bold transition-all duration-300 ${sidebarOpen ? 'text-xl' : 'text-sm'}`}>
-                        {sidebarOpen ? 'Flour Mill ERP' : 'FME'}
-                    </h1>
-                    <button 
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className="p-1 rounded hover:bg-blue-700 transition-colors"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sidebarOpen ? "M11 19l-7-7 7-7m8 14l-7-7 7-7" : "M13 5l7 7-7 7M5 5l7 7-7 7"} />
-                        </svg>
-                    </button>
-                </div>
-            </div>
+
 
             {/* Navigation Menu */}
             <nav className="flex-1 py-4 overflow-y-auto">

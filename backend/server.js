@@ -1158,50 +1158,82 @@ app.delete('/api/issue-notes-internal/:id', async (req, res) => {
     }
 });
 
-// Generate item code based on category and subcategory
-app.get('/api/items/generate-code/:categoryId/:subcategoryId', async (req, res) => {
-    const { categoryId, subcategoryId } = req.params;
-    
+const generateNextItemCode = async (connection, categoryId, subcategoryId) => {
     try {
-        // Get category and subcategory details
-        const [categoryResult] = await pool.execute(
+        // First get the category and subcategory details
+        const [categories] = await connection.execute(
             'SELECT category_name FROM item_categories WHERE id = ?',
             [categoryId]
         );
-        
-        const [subcategoryResult] = await pool.execute(
+
+        if (categories.length === 0) {
+            throw new Error('Category not found');
+        }
+
+        const [subcategories] = await connection.execute(
             'SELECT subcategory_name FROM subcategories WHERE id = ?',
             [subcategoryId]
         );
-        
-        if (categoryResult.length === 0 || subcategoryResult.length === 0) {
-            return res.status(404).json({ message: 'Category or subcategory not found' });
+
+        if (subcategories.length === 0) {
+            throw new Error('Subcategory not found');
         }
-        
-        const categoryName = categoryResult[0].category_name;
-        const subcategoryName = subcategoryResult[0].subcategory_name;
-        
-        // Create category prefix (first 2 letters of category)
-        const categoryPrefix = categoryName.substring(0, 2).toUpperCase();
-        
-        // Create subcategory prefix (first 2 letters of subcategory)
-        const subcategoryPrefix = subcategoryName.substring(0, 2).toUpperCase();
-        
-        // Count existing items with same category and subcategory
-        const [countResult] = await pool.execute(
-            'SELECT COUNT(*) as count FROM items WHERE category_id = ? AND subcategory_id = ?',
+
+        // Get all existing items for this category-subcategory combination
+        const [items] = await connection.execute(
+            'SELECT item_code FROM items WHERE category_id = ? AND subcategory_id = ? ORDER BY item_code DESC LIMIT 1',
             [categoryId, subcategoryId]
         );
-        
-        const nextSequence = countResult[0].count + 1;
-        
-        // Generate item code: PREFIX-SUBPREFIX-001
-        const itemCode = `${categoryPrefix}${subcategoryPrefix}-${nextSequence.toString().padStart(3, '0')}`;
-        
-        res.json({ itemCode });
+
+        let nextNumber = 1;
+        let prefix = '';
+
+        if (items.length > 0) {
+            const lastCode = items[0].item_code;
+            // Extract the numeric portion (e.g., from "RAPA-002" get "002")
+            const match = lastCode.match(/\d+$/);
+            if (match) {
+                nextNumber = parseInt(match[0]) + 1;
+                // Get the prefix from the existing code (e.g., "RAPA-")
+                prefix = lastCode.substring(0, lastCode.lastIndexOf(match[0]));
+            } else {
+                // If no number found, use the last code's prefix
+                prefix = lastCode + '-';
+            }
+        } else {
+            // For new category-subcategory combination, generate prefix from names
+            const categoryPrefix = categories[0].category_name.substring(0, 2).toUpperCase();
+            const subcategoryPrefix = subcategories[0].subcategory_name.substring(0, 2).toUpperCase();
+            prefix = `${categoryPrefix}${subcategoryPrefix}-`;
+        }
+
+        // Generate the new code with padded number
+        const newCode = `${prefix}${String(nextNumber).padStart(3, '0')}`;
+        return newCode;
+
+    } catch (error) {
+        console.error('Error in generateNextItemCode:', error);
+        throw error;
+    }
+};
+
+// Update the item code generation endpoint
+app.get('/api/items/generate-code/:categoryId/:subcategoryId', async (req, res) => {
+    const { categoryId, subcategoryId } = req.params;
+    let connection;
+
+    try {
+        connection = await pool.getConnection();
+        const nextCode = await generateNextItemCode(connection, categoryId, subcategoryId);
+        res.json({ itemCode: nextCode });
     } catch (error) {
         console.error('Error generating item code:', error);
-        res.status(500).json({ message: 'Error generating item code', error: error.message });
+        res.status(500).json({ 
+            message: 'Error generating item code', 
+            error: error.message 
+        });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
